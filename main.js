@@ -789,9 +789,9 @@ const material = new THREE.ShaderMaterial({
       float cavity = 1.0 - smoothstep(0.18, 0.78, h);
       float ridgeWide  = smoothstep(0.22, 0.95, h);
 
-      float grainAmt = mix(0.05, 0.10, 1.0 - inkMask);
+    float grainAmt = mix(0.07, 0.16, 1.0 - inkMask);
       vec3 col = uPaper + (grain - 0.5) * grainAmt;
-      col += (paperFiber - 0.5) * mix(0.05, 0.10, 1.0 - inkMask);
+    col += (paperFiber - 0.5) * mix(0.05, 0.12, 1.0 - inkMask);
 
       vec3 guideLin = srgbToLin(guideDriftSrgb);
       float maxc = max(guideDriftSrgb.r, max(guideDriftSrgb.g, guideDriftSrgb.b));
@@ -912,7 +912,7 @@ let defaultLineImg = null;
 let defaultColorImg = null;
 let lineImg = null;
 let colorImg = null;
-let grainImg = null;
+  let grainImg = null;
 
 function updateAspect(img) {
   if (!img) return;
@@ -1097,6 +1097,6 @@ async function tryAutoLoadDefaults() {
     grainImg = await urlToImage(DEFAULT_GRAIN_URL);
     grainImg._labelName = DEFAULT_GRAIN_URL;
   } catch {}
-  if (defaultLineImg || defaultColorImg) await rebuildMaps();
+  if (defaultLineImg || defaultColorImg || grainImg) await rebuildMaps();
 }
 tryAutoLoadDefaults();
