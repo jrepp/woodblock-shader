@@ -11,7 +11,7 @@ import {
   makeDataTextureRGBA,
   makeRepeatDataTextureR,
   buildWoodGrainTex,
-  buildWoodGrainTexRGB,
+  buildWoodGrainTexRGBA,
   buildPigmentNoiseTex,
   buildPaperFiberTex,
   buildHeightFromLineArt,
@@ -48,7 +48,7 @@ controls.target.set(0, 0.0, 0);
 const MAP_SIZE = 1024;
 
 let grainTex = makeRepeatDataTextureR(512, 512, buildWoodGrainTex(512));
-let woodColorTex = new THREE.DataTexture(buildWoodGrainTexRGB(512), 512, 512, THREE.RGBFormat);
+let woodColorTex = new THREE.DataTexture(buildWoodGrainTexRGBA(512), 512, 512, THREE.RGBAFormat);
 woodColorTex.wrapS = woodColorTex.wrapT = THREE.RepeatWrapping;
 woodColorTex.magFilter = THREE.LinearFilter;
 woodColorTex.minFilter = THREE.LinearMipmapLinearFilter;

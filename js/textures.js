@@ -271,6 +271,20 @@ export function buildWoodGrainTexRGB(size = 512) {
   return data;
 }
 
+export function buildWoodGrainTexRGBA(size = 512) {
+  const gray = buildWoodGrainTex(size);
+  const data = new Uint8Array(size * size * 4);
+  for (let i = 0; i < gray.length; i++) {
+    const v = gray[i];
+    const o = i * 4;
+    data[o] = v;
+    data[o + 1] = v;
+    data[o + 2] = v;
+    data[o + 3] = 255;
+  }
+  return data;
+}
+
 export function buildPigmentNoiseTex(size = 512) {
   const data = new Uint8Array(size * size);
   for (let y = 0; y < size; y++) {
