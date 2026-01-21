@@ -759,12 +759,15 @@
         `,
       });
 
-      const geo = new THREE.PlaneGeometry(1.4, 1.0, 1, 1);
+      const BASE_PLANE = 1.0;
+      const FRAME_PAD = 0.04;
+
+      const geo = new THREE.PlaneGeometry(BASE_PLANE, BASE_PLANE, 1, 1);
       const mesh = new THREE.Mesh(geo, material);
       scene.add(mesh);
 
       const frame = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.44, 1.04, 1, 1),
+        new THREE.PlaneGeometry(BASE_PLANE + FRAME_PAD, BASE_PLANE + FRAME_PAD, 1, 1),
         new THREE.MeshBasicMaterial({ color: 0x1a1a1a })
       );
       frame.position.z = -0.001;
@@ -800,6 +803,23 @@
       let lineImg = null;
       let colorImg = null;
 
+      function updateAspect(img) {
+        if (!img) return;
+        const w = img.naturalWidth || img.width || 1;
+        const h = img.naturalHeight || img.height || 1;
+        const aspect = w / h;
+        let sx = 1, sy = 1;
+        if (aspect >= 1) {
+          sx = aspect;
+          sy = 1;
+        } else {
+          sx = 1;
+          sy = 1 / aspect;
+        }
+        mesh.scale.set(sx, sy, 1);
+        frame.scale.set(sx, sy, 1);
+      }
+
       function updateFileLabels() {
         const lineName = lineImg ? lineImg._labelName : (defaultLineImg ? DEFAULT_LINE_URL : "none");
         const colorName = colorImg ? colorImg._labelName : (defaultColorImg ? DEFAULT_COLOR_URL : "none");
@@ -814,6 +834,7 @@
         updateFileLabels();
 
         if (activeLine) {
+          updateAspect(activeLine);
           const c = imageToCanvas(activeLine, MAP_SIZE);
           const heightU8 = buildHeightFromLineArt(c, 0.55, 2, 1.35);
           const normalU8 = buildNormalFromHeight(heightU8, MAP_SIZE, MAP_SIZE, 10.0);
