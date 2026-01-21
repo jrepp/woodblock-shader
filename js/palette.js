@@ -264,14 +264,20 @@ export function pigmentMaskFromHeight(heightU8, w, h, paletteLinear) {
     for (let x = 0; x < w; x++) {
       const p = y * w + x;
       const hgt = heightU8[p] / 255;
-      const low = hgt < 0.55 ? 1.0 : 0.0;
+      const hL = heightU8[y * w + Math.max(0, x - 1)] / 255;
+      const hR = heightU8[y * w + Math.min(w - 1, x + 1)] / 255;
+      const hD = heightU8[Math.max(0, y - 1) * w + x] / 255;
+      const hU = heightU8[Math.min(h - 1, y + 1) * w + x] / 255;
+      const edge = Math.min(1.0, Math.hypot(hR - hL, hU - hD) * 6.0);
+      const low = 1.0 - smoothstep(0.45, 0.7, hgt);
+      const lowInterior = low * (1.0 - edge);
       const u = x / w;
       const v = y / h;
       const noise = fbmNoisePeriodic(u, v, 6.0);
       const allow = (noise < fillRate) ? 1.0 : 0.0;
 
       let r = white[0], g = white[1], b = white[2];
-      if (low * allow > 0.5) {
+      if (lowInterior * allow > 0.5) {
         const pick = Math.floor(fbmNoisePeriodic(u + 11.3, v + 4.7, 5.0) * paletteLinear.length);
         const lin = paletteLinear[pick % paletteLinear.length];
         const sr = lin[0], sg = lin[1], sb = lin[2];
