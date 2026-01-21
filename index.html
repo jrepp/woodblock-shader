@@ -22,7 +22,11 @@
       #hud b { color: #fff; }
       #hud .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
       #hud input[type="file"] { color: #ddd; }
-      #palette { display: flex; gap: 6px; align-items: center; }
+      #hud select { background: #141414; color: #ddd; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 6px; }
+      #hud .file { opacity: 0.9; font-size: 11px; }
+      #palettes { display: flex; flex-direction: column; gap: 6px; }
+      .palette-block { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+      .palette-label { min-width: 140px; opacity: 0.9; }
       .swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); }
       .note { opacity: 0.9; }
       a { color: #b7d5ff; text-decoration: none; }
@@ -41,9 +45,21 @@
       </div>
       <div class="row" style="margin-top:8px">
         <label>Line art: <input id="lineInput" type="file" accept="image/*" /></label>
+        <div class="file" id="lineFile"></div>
         <label>Color reference: <input id="colorInput" type="file" accept="image/*" /></label>
+        <div class="file" id="colorFile"></div>
+        <label>Preview:
+          <select id="debugSelect">
+            <option value="0">Final</option>
+            <option value="1">Height</option>
+            <option value="2">Normal</option>
+            <option value="3">Pigment guide</option>
+            <option value="4">Wood grain</option>
+            <option value="5">Pigment noise</option>
+          </select>
+        </label>
         <button id="rebuild">Rebuild maps</button>
-        <div id="palette"></div>
+        <div id="palettes"></div>
       </div>
     </div>
 
@@ -277,33 +293,45 @@
         return data;
       }
 
-      function extractPaletteKMeans(canvas, k = 8, samples = 3000, iters = 10) {
+      function sampleGrid(canvas, gridSize = 60) {
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         const w = canvas.width, h = canvas.height;
         const img = ctx.getImageData(0, 0, w, h).data;
 
         const pts = [];
-        for (let i = 0; i < samples; i++) {
-          const x = (Math.random() * w) | 0;
-          const y = (Math.random() * h) | 0;
-          const p = (y*w + x) * 4;
-          const r = img[p] / 255, g = img[p+1]/255, b = img[p+2]/255;
-          const maxc = Math.max(r,g,b);
-          const minc = Math.min(r,g,b);
-          const chroma = maxc - minc;
-          if (maxc > 0.90 && chroma < 0.08) continue;
-          pts.push([srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)]);
+        for (let gy = 0; gy < gridSize; gy++) {
+          for (let gx = 0; gx < gridSize; gx++) {
+            const x = Math.min(w - 1, Math.floor((gx + 0.5) * w / gridSize));
+            const y = Math.min(h - 1, Math.floor((gy + 0.5) * h / gridSize));
+            const p = (y*w + x) * 4;
+            const r = img[p] / 255, g = img[p+1]/255, b = img[p+2]/255;
+            const maxc = Math.max(r,g,b);
+            const minc = Math.min(r,g,b);
+            const chroma = maxc - minc;
+            if (maxc > 0.93 && chroma < 0.08) continue;
+            if (maxc < 0.07 && chroma < 0.05) continue;
+            pts.push({
+              srgb: [r, g, b],
+              lin: [srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)]
+            });
+          }
         }
+        return pts;
+      }
+
+      function extractPaletteKMeans(canvas, k = 8, gridSize = 60, iters = 12) {
+        const pts = sampleGrid(canvas, gridSize);
         if (pts.length < k) return null;
 
         const cent = [];
-        for (let i = 0; i < k; i++) cent.push(pts[(Math.random() * pts.length) | 0].slice());
+        const stride = Math.max(1, Math.floor(pts.length / k));
+        for (let i = 0; i < k; i++) cent.push(pts[Math.min(i * stride, pts.length - 1)].lin.slice());
         const assign = new Uint16Array(pts.length);
 
         for (let it = 0; it < iters; it++) {
           for (let i = 0; i < pts.length; i++) {
             let best = 0, bestD = Infinity;
-            const [pr, pg, pb] = pts[i];
+            const [pr, pg, pb] = pts[i].lin;
             for (let c = 0; c < k; c++) {
               const dr = pr - cent[c][0], dg = pg - cent[c][1], db = pb - cent[c][2];
               const d = dr*dr + dg*dg + db*db;
@@ -314,7 +342,10 @@
           const sum = Array.from({length:k}, () => [0,0,0,0]);
           for (let i = 0; i < pts.length; i++) {
             const c = assign[i];
-            sum[c][0] += pts[i][0]; sum[c][1] += pts[i][1]; sum[c][2] += pts[i][2]; sum[c][3] += 1;
+            sum[c][0] += pts[i].lin[0];
+            sum[c][1] += pts[i].lin[1];
+            sum[c][2] += pts[i].lin[2];
+            sum[c][3] += 1;
           }
           for (let c = 0; c < k; c++) {
             if (sum[c][3] > 0) {
@@ -328,13 +359,123 @@
         return cent;
       }
 
-      function renderPaletteSwatches(paletteLinear) {
-        const el = document.getElementById("palette");
-        el.innerHTML = "";
+      function extractPaletteMedianCut(canvas, k = 8, gridSize = 60) {
+        const pts = sampleGrid(canvas, gridSize);
+        if (pts.length < k) return null;
+
+        const boxes = [{ pts }];
+        while (boxes.length < k) {
+          boxes.sort((a, b) => {
+            const ra = rangeOf(a.pts), rb = rangeOf(b.pts);
+            return Math.max(rb.r, rb.g, rb.b) - Math.max(ra.r, ra.g, ra.b);
+          });
+          const box = boxes.shift();
+          if (!box || box.pts.length <= 1) break;
+          const r = rangeOf(box.pts);
+          const channel = (r.r >= r.g && r.r >= r.b) ? 0 : (r.g >= r.b ? 1 : 2);
+          box.pts.sort((p, q) => p.lin[channel] - q.lin[channel]);
+          const mid = Math.floor(box.pts.length / 2);
+          boxes.push({ pts: box.pts.slice(0, mid) });
+          boxes.push({ pts: box.pts.slice(mid) });
+        }
+        const out = boxes.map((b) => averageLin(b.pts)).filter(Boolean);
+        out.sort((a,b) => (0.2126*a[0]+0.7152*a[1]+0.0722*a[2]) - (0.2126*b[0]+0.7152*b[1]+0.0722*b[2]));
+        return out.slice(0, k);
+      }
+
+      function extractPaletteHistogram(canvas, k = 8, gridSize = 80) {
+        const pts = sampleGrid(canvas, gridSize);
+        if (pts.length < k) return null;
+        const bins = new Map();
+        const bin = (v) => Math.max(0, Math.min(31, (v * 31 + 0.5) | 0));
+        for (const p of pts) {
+          const r = bin(p.srgb[0]);
+          const g = bin(p.srgb[1]);
+          const b = bin(p.srgb[2]);
+          const key = (r << 10) | (g << 5) | b;
+          const entry = bins.get(key) || { count: 0, sum: [0, 0, 0] };
+          entry.count += 1;
+          entry.sum[0] += p.lin[0];
+          entry.sum[1] += p.lin[1];
+          entry.sum[2] += p.lin[2];
+          bins.set(key, entry);
+        }
+        const top = Array.from(bins.values())
+          .sort((a, b) => b.count - a.count)
+          .slice(0, k);
+        const out = top.map((e) => [e.sum[0]/e.count, e.sum[1]/e.count, e.sum[2]/e.count]);
+        out.sort((a,b) => (0.2126*a[0]+0.7152*a[1]+0.0722*a[2]) - (0.2126*b[0]+0.7152*b[1]+0.0722*b[2]));
+        return out;
+      }
+
+      function extractPaletteHueBins(canvas, k = 8, gridSize = 70, hueBins = 12) {
+        const pts = sampleGrid(canvas, gridSize);
+        if (pts.length < k) return null;
+        const bins = Array.from({ length: hueBins }, () => ({ w: 0, sum: [0,0,0] }));
+        for (const p of pts) {
+          const [h, s, v] = rgbToHsv(p.srgb[0], p.srgb[1], p.srgb[2]);
+          if (s < 0.15 || v < 0.1) continue;
+          const idx = Math.min(hueBins - 1, Math.floor(h * hueBins));
+          const w = s * v;
+          bins[idx].w += w;
+          bins[idx].sum[0] += p.lin[0] * w;
+          bins[idx].sum[1] += p.lin[1] * w;
+          bins[idx].sum[2] += p.lin[2] * w;
+        }
+        const top = bins
+          .map((b) => b.w > 0 ? [b.sum[0]/b.w, b.sum[1]/b.w, b.sum[2]/b.w] : null)
+          .filter(Boolean)
+          .slice(0, k);
+        if (top.length < k) {
+          const fallback = extractPaletteHistogram(canvas, k, gridSize);
+          return fallback;
+        }
+        top.sort((a,b) => (0.2126*a[0]+0.7152*a[1]+0.0722*a[2]) - (0.2126*b[0]+0.7152*b[1]+0.0722*b[2]));
+        return top.slice(0, k);
+      }
+
+      function rangeOf(pts) {
+        let rMin = 1, rMax = 0, gMin = 1, gMax = 0, bMin = 1, bMax = 0;
+        for (const p of pts) {
+          const [r,g,b] = p.lin;
+          if (r < rMin) rMin = r; if (r > rMax) rMax = r;
+          if (g < gMin) gMin = g; if (g > gMax) gMax = g;
+          if (b < bMin) bMin = b; if (b > bMax) bMax = b;
+        }
+        return { r: rMax - rMin, g: gMax - gMin, b: bMax - bMin };
+      }
+
+      function averageLin(pts) {
+        if (!pts.length) return null;
+        let r = 0, g = 0, b = 0;
+        for (const p of pts) { r += p.lin[0]; g += p.lin[1]; b += p.lin[2]; }
+        const inv = 1 / pts.length;
+        return [r*inv, g*inv, b*inv];
+      }
+
+      function rgbToHsv(r, g, b) {
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        const d = max - min;
+        let h = 0;
+        if (d !== 0) {
+          if (max === r) h = ((g - b) / d) % 6;
+          else if (max === g) h = (b - r) / d + 2;
+          else h = (r - g) / d + 4;
+          h /= 6;
+          if (h < 0) h += 1;
+        }
+        const s = max === 0 ? 0 : d / max;
+        return [h, s, max];
+      }
+
+      function renderPaletteSwatches(labelText, paletteLinear) {
+        const el = document.getElementById("palettes");
+        const row = document.createElement("div");
+        row.className = "palette-block";
         const label = document.createElement("div");
-        label.textContent = "Extracted palette:";
-        label.style.marginRight = "6px";
-        el.appendChild(label);
+        label.className = "palette-label";
+        label.textContent = labelText;
+        row.appendChild(label);
 
         for (const cLin of paletteLinear) {
           const r = clamp01(linearToSrgb(cLin[0]));
@@ -343,8 +484,9 @@
           const sw = document.createElement("div");
           sw.className = "swatch";
           sw.style.background = `rgb(${(r*255)|0}, ${(g*255)|0}, ${(b*255)|0})`;
-          el.appendChild(sw);
+          row.appendChild(sw);
         }
+        el.appendChild(row);
       }
 
       // --- Three.js ---
@@ -387,7 +529,7 @@
         [srgbToLinear(0.40), srgbToLinear(0.36), srgbToLinear(0.32)],
         [srgbToLinear(0.93), srgbToLinear(0.91), srgbToLinear(0.86)]
       ];
-      renderPaletteSwatches(paletteLinear);
+      renderPaletteSwatches("Default palette", paletteLinear);
 
       const material = new THREE.ShaderMaterial({
         uniforms: {
@@ -419,6 +561,7 @@
           uRegistration: { value: new THREE.Vector2(0.0012, -0.0008) },
 
           uTime: { value: 0.0 },
+          uDebugMode: { value: 0.0 },
         },
         vertexShader: /* glsl */`
           varying vec2 vUv;
@@ -461,6 +604,7 @@
           uniform vec2  uRegistration;
 
           uniform float uTime;
+          uniform float uDebugMode;
 
           float saturate(float x) { return clamp(x, 0.0, 1.0); }
 
@@ -506,6 +650,13 @@
 
             float h = texture2D(uHeight, uv).r;
             vec3 nTex = texture2D(uNormal, uv).xyz * 2.0 - 1.0;
+            vec3 guideSrgb = texture2D(uPigmentGuide, uv).rgb;
+
+            if (uDebugMode > 0.5 && uDebugMode < 1.5) { gl_FragColor = vec4(vec3(h), 1.0); return; }
+            if (uDebugMode > 1.5 && uDebugMode < 2.5) { gl_FragColor = vec4(nTex * 0.5 + 0.5, 1.0); return; }
+            if (uDebugMode > 2.5 && uDebugMode < 3.5) { gl_FragColor = vec4(guideSrgb, 1.0); return; }
+            if (uDebugMode > 3.5 && uDebugMode < 4.5) { gl_FragColor = vec4(vec3(grain), 1.0); return; }
+            if (uDebugMode > 4.5 && uDebugMode < 5.5) { gl_FragColor = vec4(vec3(pigmentNoise), 1.0); return; }
             vec3 n = normalize(mix(normalize(vN), nTex, 0.95));
 
             float inkMask = smoothstep(0.55, 0.92, h);
@@ -516,7 +667,6 @@
 
             vec3 col = uPaper + (grain - 0.5) * 0.08;
 
-            vec3 guideSrgb = texture2D(uPigmentGuide, uv).rgb;
             vec3 guideLin = srgbToLin(guideSrgb);
             float guideActive = step(0.02, luma(guideSrgb));
 
@@ -600,6 +750,9 @@
       const lineInput = document.getElementById("lineInput");
       const colorInput = document.getElementById("colorInput");
       const rebuildBtn = document.getElementById("rebuild");
+      const debugSelect = document.getElementById("debugSelect");
+      const lineFileEl = document.getElementById("lineFile");
+      const colorFileEl = document.getElementById("colorFile");
 
       const DEFAULT_LINE_URL = "./assets/line-art.png";
       const DEFAULT_COLOR_URL = "./assets/color-ref.png";
@@ -609,9 +762,18 @@
       let lineImg = null;
       let colorImg = null;
 
+      function updateFileLabels() {
+        const lineName = lineImg ? lineImg._labelName : (defaultLineImg ? DEFAULT_LINE_URL : "none");
+        const colorName = colorImg ? colorImg._labelName : (defaultColorImg ? DEFAULT_COLOR_URL : "none");
+        lineFileEl.textContent = `Using: ${lineName}`;
+        colorFileEl.textContent = `Using: ${colorName}`;
+      }
+
       async function rebuildMaps() {
         const activeLine = lineImg || defaultLineImg;
         const activeColor = colorImg || defaultColorImg;
+
+        updateFileLabels();
 
         if (activeLine) {
           const c = imageToCanvas(activeLine, MAP_SIZE);
@@ -638,10 +800,21 @@
           if (old && old.isTexture) old.dispose();
           material.uniforms.uPigmentGuide.value = guide;
 
-          const pal = extractPaletteKMeans(c, 8, 3000, 10);
-          if (pal) {
-            paletteLinear = pal;
-            renderPaletteSwatches(paletteLinear);
+          const palettesEl = document.getElementById("palettes");
+          palettesEl.innerHTML = "";
+
+          const palK = extractPaletteKMeans(c, 8, 60, 12);
+          const palM = extractPaletteMedianCut(c, 8, 60);
+          const palH = extractPaletteHistogram(c, 8, 80);
+          const palU = extractPaletteHueBins(c, 8, 70, 12);
+
+          if (palK) renderPaletteSwatches("K-means (grid)", palK);
+          if (palM) renderPaletteSwatches("Median cut", palM);
+          if (palH) renderPaletteSwatches("Histogram peaks", palH);
+          if (palU) renderPaletteSwatches("Hue bins", palU);
+
+          if (palK) {
+            paletteLinear = palK;
             const u = material.uniforms;
 
             u.uPal0.value.set(...paletteLinear[0]);
@@ -667,6 +840,7 @@
         const f = e.target.files?.[0];
         if (!f) return;
         lineImg = await fileToImage(f);
+        lineImg._labelName = f.name;
         await rebuildMaps();
       });
 
@@ -674,18 +848,25 @@
         const f = e.target.files?.[0];
         if (!f) return;
         colorImg = await fileToImage(f);
+        colorImg._labelName = f.name;
         await rebuildMaps();
       });
 
       rebuildBtn.addEventListener("click", async () => { await rebuildMaps(); });
+      debugSelect.addEventListener("change", (e) => {
+        const v = Number(e.target.value || 0);
+        material.uniforms.uDebugMode.value = v;
+      });
 
       // Auto-load defaults if present
       async function tryAutoLoadDefaults() {
         try {
           defaultLineImg = await urlToImage(DEFAULT_LINE_URL);
+          defaultLineImg._labelName = DEFAULT_LINE_URL;
         } catch {}
         try {
           defaultColorImg = await urlToImage(DEFAULT_COLOR_URL);
+          defaultColorImg._labelName = DEFAULT_COLOR_URL;
         } catch {}
         if (defaultLineImg || defaultColorImg) await rebuildMaps();
       }
