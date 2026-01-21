@@ -248,7 +248,10 @@ export function floodFillWhiteWithPalette(canvas, paletteLinear, tileSize = 24) 
   ctx.putImageData(img, 0, 0);
 }
 
-export function pigmentMaskFromHeight(heightU8, w, h, paletteLinear) {
+export function pigmentMaskFromHeight(heightU8, w, h, paletteLinear, opts = {}) {
+  const lowMin = opts.lowMin ?? 0.55;
+  const lowMax = opts.lowMax ?? 0.8;
+  const edgeScale = opts.edgeScale ?? 6.0;
   const mask = document.createElement("canvas");
   mask.width = w;
   mask.height = h;
@@ -268,8 +271,8 @@ export function pigmentMaskFromHeight(heightU8, w, h, paletteLinear) {
       const hR = heightU8[y * w + Math.min(w - 1, x + 1)] / 255;
       const hD = heightU8[Math.max(0, y - 1) * w + x] / 255;
       const hU = heightU8[Math.min(h - 1, y + 1) * w + x] / 255;
-      const edge = Math.min(1.0, Math.hypot(hR - hL, hU - hD) * 6.0);
-      const low = 1.0 - smoothstep(0.45, 0.7, hgt);
+      const edge = Math.min(1.0, Math.hypot(hR - hL, hU - hD) * edgeScale);
+      const low = 1.0 - smoothstep(lowMin, lowMax, hgt);
       const lowInterior = low * (1.0 - edge);
       const u = x / w;
       const v = y / h;

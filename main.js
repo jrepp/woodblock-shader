@@ -126,6 +126,9 @@ const registration = document.getElementById("registration");
 const heightThreshold = document.getElementById("heightThreshold");
 const heightBlur = document.getElementById("heightBlur");
 const heightProfile = document.getElementById("heightProfile");
+const fillLowMin = document.getElementById("fillLowMin");
+const fillLowMax = document.getElementById("fillLowMax");
+const fillEdgeScale = document.getElementById("fillEdgeScale");
 const vignette = document.getElementById("vignette");
 const specular = document.getElementById("specular");
 
@@ -139,8 +142,13 @@ const registrationVal = document.getElementById("registrationVal");
 const heightThresholdVal = document.getElementById("heightThresholdVal");
 const heightBlurVal = document.getElementById("heightBlurVal");
 const heightProfileVal = document.getElementById("heightProfileVal");
+const fillLowMinVal = document.getElementById("fillLowMinVal");
+const fillLowMaxVal = document.getElementById("fillLowMaxVal");
+const fillEdgeScaleVal = document.getElementById("fillEdgeScaleVal");
 const vignetteVal = document.getElementById("vignetteVal");
 const specularVal = document.getElementById("specularVal");
+const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
+const tabPanels = Array.from(document.querySelectorAll(".tab"));
 
 const DEFAULT_LINE_URL = "./assets/line-art.png";
 const DEFAULT_COLOR_URL = "./assets/color-ref.png";
@@ -207,7 +215,11 @@ async function rebuildMaps() {
     material.uniforms.uNormal.value = makeDataTextureRGBA(MAP_SIZE, MAP_SIZE, normalU8);
 
     if (lastPaletteRaw) {
-      const mask = pigmentMaskFromHeight(lastHeightU8, MAP_SIZE, MAP_SIZE, lastPaletteRaw);
+      const mask = pigmentMaskFromHeight(lastHeightU8, MAP_SIZE, MAP_SIZE, lastPaletteRaw, {
+        lowMin: Number(fillLowMin.value),
+        lowMax: Number(fillLowMax.value),
+        edgeScale: Number(fillEdgeScale.value),
+      });
       const tex = new THREE.CanvasTexture(mask);
       tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
       tex.magFilter = THREE.LinearFilter;
@@ -249,7 +261,11 @@ async function rebuildMaps() {
     if (palK) {
       lastPaletteRaw = palK;
       if (lastHeightU8) {
-        const mask = pigmentMaskFromHeight(lastHeightU8, MAP_SIZE, MAP_SIZE, palK);
+        const mask = pigmentMaskFromHeight(lastHeightU8, MAP_SIZE, MAP_SIZE, palK, {
+          lowMin: Number(fillLowMin.value),
+          lowMax: Number(fillLowMax.value),
+          edgeScale: Number(fillEdgeScale.value),
+        });
         const tex = new THREE.CanvasTexture(mask);
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
         tex.magFilter = THREE.LinearFilter;
@@ -336,8 +352,19 @@ bindRange(registration, registrationVal, (v) => { material.uniforms.uRegistratio
 bindRange(heightThreshold, heightThresholdVal, () => { rebuildMaps(); }, (v) => v.toFixed(2));
 bindRange(heightBlur, heightBlurVal, () => { rebuildMaps(); }, (v) => v.toFixed(0));
 bindRange(heightProfile, heightProfileVal, () => { rebuildMaps(); }, (v) => v.toFixed(2));
+bindRange(fillLowMin, fillLowMinVal, () => { rebuildMaps(); }, (v) => v.toFixed(2));
+bindRange(fillLowMax, fillLowMaxVal, () => { rebuildMaps(); }, (v) => v.toFixed(2));
+bindRange(fillEdgeScale, fillEdgeScaleVal, () => { rebuildMaps(); }, (v) => v.toFixed(1));
 bindRange(vignette, vignetteVal, (v) => { material.uniforms.uVignetteStrength.value = v; }, (v) => v.toFixed(2));
 bindRange(specular, specularVal, (v) => { material.uniforms.uSpecularStrength.value = v; }, (v) => v.toFixed(2));
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const target = btn.getAttribute("data-tab");
+    tabButtons.forEach((b) => b.classList.toggle("active", b === btn));
+    tabPanels.forEach((p) => p.classList.toggle("active", p.id === target));
+  });
+});
 
 hudToggle.addEventListener("click", () => {
   const minimized = document.body.classList.toggle("minimized");
