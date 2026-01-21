@@ -491,6 +491,82 @@ function renderPaletteSwatches(labelText, paletteLinear) {
   el.appendChild(row);
 }
 
+function paletteTextureFromLinear(paletteLinear) {
+  const w = paletteLinear.length;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = 1;
+  const ctx = c.getContext("2d");
+  const img = ctx.createImageData(w, 1);
+  for (let i = 0; i < w; i++) {
+    const r = clamp01(linearToSrgb(paletteLinear[i][0]));
+    const g = clamp01(linearToSrgb(paletteLinear[i][1]));
+    const b = clamp01(linearToSrgb(paletteLinear[i][2]));
+    const o = i * 4;
+    img.data[o + 0] = Math.round(r * 255);
+    img.data[o + 1] = Math.round(g * 255);
+    img.data[o + 2] = Math.round(b * 255);
+    img.data[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+function floodFillWhiteWithPalette(canvas, paletteLinear, tileSize = 24) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const w = canvas.width, h = canvas.height;
+  const img = ctx.getImageData(0, 0, w, h);
+  const data = img.data;
+
+  const fillRate = 0.22 + 0.08 * hash2(w, h);
+  const cols = Math.ceil(w / tileSize);
+  const rows = Math.ceil(h / tileSize);
+
+  for (let ty = 0; ty < rows; ty++) {
+    for (let tx = 0; tx < cols; tx++) {
+      const x0 = tx * tileSize;
+      const y0 = ty * tileSize;
+      const x1 = Math.min(w, x0 + tileSize);
+      const y1 = Math.min(h, y0 + tileSize);
+
+      let whiteCount = 0;
+      let total = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const p = (y * w + x) * 4;
+          const r = data[p] / 255, g = data[p + 1] / 255, b = data[p + 2] / 255;
+          const maxc = Math.max(r, g, b);
+          const minc = Math.min(r, g, b);
+          const chroma = maxc - minc;
+          const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          if (l > 0.88 && chroma < 0.08) whiteCount++;
+          total++;
+        }
+      }
+      if (whiteCount / Math.max(1, total) < 0.9) continue;
+      if (hash2(tx, ty) >= fillRate) continue;
+
+      const pick = Math.floor(hash2(tx + 13, ty + 7) * paletteLinear.length);
+      const lin = paletteLinear[pick % paletteLinear.length];
+      const rFill = clamp01(linearToSrgb(lin[0]));
+      const gFill = clamp01(linearToSrgb(lin[1]));
+      const bFill = clamp01(linearToSrgb(lin[2]));
+      const alpha = 0.35;
+
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const p = (y * w + x) * 4;
+          data[p + 0] = Math.round(data[p + 0] * (1 - alpha) + rFill * 255 * alpha);
+          data[p + 1] = Math.round(data[p + 1] * (1 - alpha) + gFill * 255 * alpha);
+          data[p + 2] = Math.round(data[p + 2] * (1 - alpha) + bFill * 255 * alpha);
+        }
+      }
+    }
+  }
+
+  ctx.putImageData(img, 0, 0);
+}
+
 function clampPalette(palette, satMax = 0.5, desat = 0.1) {
   return palette.map((c) => {
     const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
@@ -924,8 +1000,12 @@ async function rebuildMaps() {
     if (palU) renderPaletteSwatches("Hue bins (raw)", palU);
     if (palUc) renderPaletteSwatches("Hue bins (clamped)", palUc);
 
-    if (palKc) {
-      paletteLinear = palKc;
+    if (palK) {
+      const paletteCanvas = paletteTextureFromLinear(palK);
+      floodFillWhiteWithPalette(c, palK);
+      guide.image = c;
+      guide.needsUpdate = true;
+      paletteLinear = palKc || palK;
       const u = material.uniforms;
 
       u.uPal0.value.set(...paletteLinear[0]);
