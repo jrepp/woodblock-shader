@@ -4,6 +4,13 @@
     <meta charset="utf-8" />
     <title>Woodblock Shader Demo</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/build/three.module.js"
+        }
+      }
+    </script>
     <style>
       html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
       #hud {
@@ -41,8 +48,8 @@
     </div>
 
     <script type="module">
-      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-      import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+      import * as THREE from "./vendor/three/build/three.module.js";
+      import { OrbitControls } from "./vendor/three/examples/jsm/controls/OrbitControls.js";
 
       const clamp01 = (x) => Math.max(0, Math.min(1, x));
       const lerp = (a, b, t) => a + (b - a) * t;
