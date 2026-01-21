@@ -1,5 +1,5 @@
 import { clamp01, linearToSrgb, srgbToLinear } from "./math.js";
-import { hash2, fbmNoisePeriodic } from "./noise.js";
+import { hash2, fbmNoisePeriodic, smoothstep } from "./noise.js";
 
 export const DEFAULT_PALETTE_LINEAR = [
   [srgbToLinear(0.12), srgbToLinear(0.10), srgbToLinear(0.09)],
