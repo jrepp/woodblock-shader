@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Woodblock Shader Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
+      #hud {
+        position: absolute; left: 12px; top: 12px; right: 12px;
+        color: #ddd; font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: rgba(0,0,0,0.45); padding: 10px 12px; border-radius: 10px;
+        max-width: 980px;
+      }
+      #hud b { color: #fff; }
+      #hud .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+      #hud input[type="file"] { color: #ddd; }
+      #palette { display: flex; gap: 6px; align-items: center; }
+      .swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); }
+      .note { opacity: 0.9; }
+      a { color: #b7d5ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <div class="row">
+        <div><b>Woodblock / illuminated print shader</b></div>
+        <div class="note">
+          Load: (1) line art (B/W), (2) color reference.
+          Mouse drag orbit. Scroll zoom.
+          Default assets auto-load if present in <code>assets/</code>.
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label>Line art: <input id="lineInput" type="file" accept="image/*" /></label>
+        <label>Color reference: <input id="colorInput" type="file" accept="image/*" /></label>
+        <button id="rebuild">Rebuild maps</button>
+        <div id="palette"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+      import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+
+      const clamp01 = (x) => Math.max(0, Math.min(1, x));
+      const lerp = (a, b, t) => a + (b - a) * t;
+
+      function srgbToLinear(c) { return (c <= 0.04045) ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+      function linearToSrgb(c) { return (c <= 0.0031308) ? c * 12.92 : 1.055 * Math.pow(c, 1.0/2.4) - 0.055; }
+
+      async function urlToImage(url) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.decoding = "async";
+        img.src = url;
+        await img.decode();
+        return img;
+      }
+
+      async function fileToImage(file) {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.decoding = "async";
+        img.src = url;
+        await img.decode();
+        URL.revokeObjectURL(url);
+        return img;
+      }
+
+      function imageToCanvas(img, size) {
+        const c = document.createElement("canvas");
+        c.width = size; c.height = size;
+        const ctx = c.getContext("2d", { willReadFrequently: true });
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.clearRect(0,0,size,size);
+
+        const iw = img.naturalWidth || img.width;
+        const ih = img.naturalHeight || img.height;
+        const s = Math.min(size / iw, size / ih);
+        const dw = Math.floor(iw * s);
+        const dh = Math.floor(ih * s);
+        const dx = Math.floor((size - dw) / 2);
+        const dy = Math.floor((size - dh) / 2);
+        ctx.drawImage(img, dx, dy, dw, dh);
+        return c;
+      }
+
+      function makeDataTextureR(w, h, dataU8) {
+        const tex = new THREE.DataTexture(dataU8, w, h, THREE.RedFormat);
+        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.magFilter = THREE.LinearFilter;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.generateMipmaps = true;
+        tex.needsUpdate = true;
+        return tex;
+      }
+
+      function makeDataTextureRGBA(w, h, dataU8) {
+        const tex = new THREE.DataTexture(dataU8, w, h, THREE.RGBAFormat);
+        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.magFilter = THREE.LinearFilter;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.generateMipmaps = true;
+        tex.needsUpdate = true;
+        return tex;
+      }
+
+      function makeRepeatDataTextureR(w, h, dataU8) {
+        const tex = makeDataTextureR(w, h, dataU8);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+      }
+
+      function boxBlurGray(src, w, h, radius) {
+        if (radius <= 0) return src;
+        const tmp = new Uint8Array(w * h);
+        const dst = new Uint8Array(w * h);
+        const r = radius;
+
+        for (let y = 0; y < h; y++) {
+          let acc = 0;
+          for (let x = -r; x <= r; x++) {
+            const ix = Math.max(0, Math.min(w - 1, x));
+            acc += src[y * w + ix];
+          }
+          for (let x = 0; x < w; x++) {
+            tmp[y * w + x] = Math.round(acc / (2 * r + 1));
+            const xOut = x - r;
+            const xIn = x + r + 1;
+            const outIx = Math.max(0, Math.min(w - 1, xOut));
+            const inIx  = Math.max(0, Math.min(w - 1, xIn));
+            acc += src[y * w + inIx] - src[y * w + outIx];
+          }
+        }
+
+        for (let x = 0; x < w; x++) {
+          let acc = 0;
+          for (let y = -r; y <= r; y++) {
+            const iy = Math.max(0, Math.min(h - 1, y));
+            acc += tmp[iy * w + x];
+          }
+          for (let y = 0; y < h; y++) {
+            dst[y * w + x] = Math.round(acc / (2 * r + 1));
+            const yOut = y - r;
+            const yIn = y + r + 1;
+            const outIy = Math.max(0, Math.min(h - 1, yOut));
+            const inIy  = Math.max(0, Math.min(h - 1, yIn));
+            acc += tmp[inIy * w + x] - tmp[outIy * w + x];
+          }
+        }
+        return dst;
+      }
+
+      function buildHeightFromLineArt(canvas, threshold = 0.55, blurRadius = 2, profile = 1.35) {
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        const w = canvas.width, h = canvas.height;
+        const img = ctx.getImageData(0, 0, w, h).data;
+
+        const ink = new Uint8Array(w * h);
+        for (let i = 0, p = 0; p < w*h; p++, i += 4) {
+          const r = img[i] / 255, g = img[i+1]/255, b = img[i+2]/255;
+          const l = 0.2126*r + 0.7152*g + 0.0722*b;
+          ink[p] = (l < threshold) ? 255 : 0;
+        }
+
+        const soft = boxBlurGray(ink, w, h, blurRadius);
+
+        const height = new Uint8Array(w * h);
+        for (let p = 0; p < w*h; p++) {
+          const s = soft[p] / 255;
+          const hgt = Math.pow(s, profile);
+          const n = ((p * 1103515245 + 12345) >>> 0) / 4294967295;
+          const chatter = (n - 0.5) * 0.06;
+          const val = clamp01(hgt + chatter * hgt);
+          height[p] = Math.round(val * 255);
+        }
+        return height;
+      }
+
+      function buildNormalFromHeight(heightU8, w, h, strength = 10.0) {
+        const out = new Uint8Array(w * h * 4);
+        const getH = (x, y) => {
+          x = Math.max(0, Math.min(w - 1, x));
+          y = Math.max(0, Math.min(h - 1, y));
+          return heightU8[y*w + x] / 255;
+        };
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const hL = getH(x - 1, y);
+            const hR = getH(x + 1, y);
+            const hD = getH(x, y - 1);
+            const hU = getH(x, y + 1);
+            const dx = (hR - hL) * strength;
+            const dy = (hU - hD) * strength;
+
+            let nx = -dx, ny = -dy, nz = 1.0;
+            const len = Math.hypot(nx, ny, nz) || 1.0;
+            nx /= len; ny /= len; nz /= len;
+
+            const i = (y*w + x) * 4;
+            out[i+0] = Math.round((nx * 0.5 + 0.5) * 255);
+            out[i+1] = Math.round((ny * 0.5 + 0.5) * 255);
+            out[i+2] = Math.round((nz * 0.5 + 0.5) * 255);
+            out[i+3] = 255;
+          }
+        }
+        return out;
+      }
+
+      function hash2(x, y) {
+        let n = x * 374761393 + y * 668265263;
+        n = (n ^ (n >> 13)) * 1274126177;
+        n = n ^ (n >> 16);
+        return (n >>> 0) / 4294967295;
+      }
+      function smoothstep(a, b, x) {
+        const t = clamp01((x - a) / (b - a));
+        return t * t * (3 - 2 * t);
+      }
+      function fbmNoise(x, y) {
+        let amp = 0.5, freq = 1.0, sum = 0.0;
+        for (let i = 0; i < 4; i++) {
+          const xi = Math.floor(x * freq), yi = Math.floor(y * freq);
+          const xf = x * freq - xi, yf = y * freq - yi;
+          const v00 = hash2(xi, yi);
+          const v10 = hash2(xi + 1, yi);
+          const v01 = hash2(xi, yi + 1);
+          const v11 = hash2(xi + 1, yi + 1);
+          const u = xf * xf * (3 - 2 * xf);
+          const v = yf * yf * (3 - 2 * yf);
+          const a0 = lerp(v00, v10, u);
+          const a1 = lerp(v01, v11, u);
+          sum += lerp(a0, a1, v) * amp;
+          amp *= 0.5; freq *= 2.0;
+        }
+        return sum;
+      }
+
+      function buildWoodGrainTex(size = 512) {
+        const data = new Uint8Array(size * size);
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const u = x / (size - 1);
+            const v = y / (size - 1);
+            const warp = (fbmNoise(u * 2.0, v * 2.0) - 0.5) * 0.18;
+            const bands = Math.sin((u * 28.0 + warp + v * 2.0) * Math.PI);
+            const pores = fbmNoise(u * 10.0, v * 10.0);
+            const g = 0.55 + 0.28 * bands + 0.17 * (pores - 0.5);
+            data[y * size + x] = Math.round(clamp01(g) * 255);
+          }
+        }
+        return data;
+      }
+
+      function buildPigmentNoiseTex(size = 512) {
+        const data = new Uint8Array(size * size);
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const u = x / (size - 1);
+            const v = y / (size - 1);
+            const blotch = fbmNoise(u * 2.0, v * 2.0);
+            const speck  = fbmNoise(u * 14.0, v * 14.0);
+            const n = 0.70 * blotch + 0.30 * speck;
+            data[y * size + x] = Math.round(clamp01(n) * 255);
+          }
+        }
+        return data;
+      }
+
+      function extractPaletteKMeans(canvas, k = 8, samples = 3000, iters = 10) {
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        const w = canvas.width, h = canvas.height;
+        const img = ctx.getImageData(0, 0, w, h).data;
+
+        const pts = [];
+        for (let i = 0; i < samples; i++) {
+          const x = (Math.random() * w) | 0;
+          const y = (Math.random() * h) | 0;
+          const p = (y*w + x) * 4;
+          const r = img[p] / 255, g = img[p+1]/255, b = img[p+2]/255;
+          const maxc = Math.max(r,g,b);
+          const minc = Math.min(r,g,b);
+          const chroma = maxc - minc;
+          if (maxc > 0.90 && chroma < 0.08) continue;
+          pts.push([srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)]);
+        }
+        if (pts.length < k) return null;
+
+        const cent = [];
+        for (let i = 0; i < k; i++) cent.push(pts[(Math.random() * pts.length) | 0].slice());
+        const assign = new Uint16Array(pts.length);
+
+        for (let it = 0; it < iters; it++) {
+          for (let i = 0; i < pts.length; i++) {
+            let best = 0, bestD = Infinity;
+            const [pr, pg, pb] = pts[i];
+            for (let c = 0; c < k; c++) {
+              const dr = pr - cent[c][0], dg = pg - cent[c][1], db = pb - cent[c][2];
+              const d = dr*dr + dg*dg + db*db;
+              if (d < bestD) { bestD = d; best = c; }
+            }
+            assign[i] = best;
+          }
+          const sum = Array.from({length:k}, () => [0,0,0,0]);
+          for (let i = 0; i < pts.length; i++) {
+            const c = assign[i];
+            sum[c][0] += pts[i][0]; sum[c][1] += pts[i][1]; sum[c][2] += pts[i][2]; sum[c][3] += 1;
+          }
+          for (let c = 0; c < k; c++) {
+            if (sum[c][3] > 0) {
+              cent[c][0] = sum[c][0] / sum[c][3];
+              cent[c][1] = sum[c][1] / sum[c][3];
+              cent[c][2] = sum[c][2] / sum[c][3];
+            }
+          }
+        }
+        cent.sort((a,b) => (0.2126*a[0]+0.7152*a[1]+0.0722*a[2]) - (0.2126*b[0]+0.7152*b[1]+0.0722*b[2]));
+        return cent;
+      }
+
+      function renderPaletteSwatches(paletteLinear) {
+        const el = document.getElementById("palette");
+        el.innerHTML = "";
+        const label = document.createElement("div");
+        label.textContent = "Extracted palette:";
+        label.style.marginRight = "6px";
+        el.appendChild(label);
+
+        for (const cLin of paletteLinear) {
+          const r = clamp01(linearToSrgb(cLin[0]));
+          const g = clamp01(linearToSrgb(cLin[1]));
+          const b = clamp01(linearToSrgb(cLin[2]));
+          const sw = document.createElement("div");
+          sw.className = "swatch";
+          sw.style.background = `rgb(${(r*255)|0}, ${(g*255)|0}, ${(b*255)|0})`;
+          el.appendChild(sw);
+        }
+      }
+
+      // --- Three.js ---
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x111111);
+
+      const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 50);
+      camera.position.set(0.0, 0.22, 1.65);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0, 0.0, 0);
+
+      const MAP_SIZE = 1024;
+
+      const grainTex = makeRepeatDataTextureR(512, 512, buildWoodGrainTex(512));
+      const pigmentNoiseTex = makeRepeatDataTextureR(512, 512, buildPigmentNoiseTex(512));
+
+      const emptyH = new Uint8Array(MAP_SIZE * MAP_SIZE);
+      const emptyN = new Uint8Array(MAP_SIZE * MAP_SIZE * 4);
+      for (let i=0;i<emptyN.length;i+=4) { emptyN[i+0]=128; emptyN[i+1]=128; emptyN[i+2]=255; emptyN[i+3]=255; }
+      let heightTex = makeDataTextureR(MAP_SIZE, MAP_SIZE, emptyH);
+      let normalTex = makeDataTextureRGBA(MAP_SIZE, MAP_SIZE, emptyN);
+      let pigmentGuideTex = new THREE.Texture();
+      pigmentGuideTex.needsUpdate = true;
+
+      // Default palette
+      let paletteLinear = [
+        [srgbToLinear(0.12), srgbToLinear(0.10), srgbToLinear(0.09)],
+        [srgbToLinear(0.62), srgbToLinear(0.32), srgbToLinear(0.28)],
+        [srgbToLinear(0.78), srgbToLinear(0.67), srgbToLinear(0.32)],
+        [srgbToLinear(0.42), srgbToLinear(0.55), srgbToLinear(0.48)],
+        [srgbToLinear(0.55), srgbToLinear(0.60), srgbToLinear(0.62)],
+        [srgbToLinear(0.55), srgbToLinear(0.47), srgbToLinear(0.38)],
+        [srgbToLinear(0.40), srgbToLinear(0.36), srgbToLinear(0.32)],
+        [srgbToLinear(0.93), srgbToLinear(0.91), srgbToLinear(0.86)]
+      ];
+      renderPaletteSwatches(paletteLinear);
+
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          uHeight: { value: heightTex },
+          uNormal: { value: normalTex },
+          uGrain: { value: grainTex },
+          uPigmentNoise: { value: pigmentNoiseTex },
+          uPigmentGuide: { value: pigmentGuideTex },
+
+          uUVScale: { value: new THREE.Vector2(1.0, 1.0) },
+          uGrainScale: { value: new THREE.Vector2(2.0, 2.0) },
+          uPigmentNoiseScale: { value: new THREE.Vector2(1.6, 1.6) },
+
+          uPaper:  { value: new THREE.Color(0.93, 0.91, 0.86) },
+          uInk:    { value: new THREE.Color(0.12, 0.10, 0.09) },
+
+          uPal0: { value: new THREE.Vector3(...paletteLinear[0]) },
+          uPal1: { value: new THREE.Vector3(...paletteLinear[1]) },
+          uPal2: { value: new THREE.Vector3(...paletteLinear[2]) },
+          uPal3: { value: new THREE.Vector3(...paletteLinear[3]) },
+          uPal4: { value: new THREE.Vector3(...paletteLinear[4]) },
+          uPal5: { value: new THREE.Vector3(...paletteLinear[5]) },
+          uPal6: { value: new THREE.Vector3(...paletteLinear[6]) },
+          uPal7: { value: new THREE.Vector3(...paletteLinear[7]) },
+
+          uInkAlpha: { value: 0.95 },
+          uPigmentAlpha: { value: 0.70 },
+          uPigmentEdgePool: { value: 0.10 },
+          uRegistration: { value: new THREE.Vector2(0.0012, -0.0008) },
+
+          uTime: { value: 0.0 },
+        },
+        vertexShader: /* glsl */`
+          varying vec2 vUv;
+          varying vec3 vPos;
+          varying vec3 vN;
+          void main() {
+            vUv = uv;
+            vec4 wp = modelMatrix * vec4(position, 1.0);
+            vPos = wp.xyz;
+            vN = normalize(mat3(modelMatrix) * normal);
+            gl_Position = projectionMatrix * viewMatrix * wp;
+          }
+        `,
+        fragmentShader: /* glsl */`
+          precision highp float;
+
+          varying vec2 vUv;
+          varying vec3 vPos;
+          varying vec3 vN;
+
+          uniform sampler2D uHeight;
+          uniform sampler2D uNormal;
+          uniform sampler2D uGrain;
+          uniform sampler2D uPigmentNoise;
+          uniform sampler2D uPigmentGuide;
+
+          uniform vec2 uUVScale;
+          uniform vec2 uGrainScale;
+          uniform vec2 uPigmentNoiseScale;
+
+          uniform vec3 uPaper;
+          uniform vec3 uInk;
+
+          uniform vec3 uPal0; uniform vec3 uPal1; uniform vec3 uPal2; uniform vec3 uPal3;
+          uniform vec3 uPal4; uniform vec3 uPal5; uniform vec3 uPal6; uniform vec3 uPal7;
+
+          uniform float uInkAlpha;
+          uniform float uPigmentAlpha;
+          uniform float uPigmentEdgePool;
+          uniform vec2  uRegistration;
+
+          uniform float uTime;
+
+          float saturate(float x) { return clamp(x, 0.0, 1.0); }
+
+          vec3 srgbToLin(vec3 c) {
+            return mix(c/12.92, pow((c+0.055)/1.055, vec3(2.4)), step(0.04045, c));
+          }
+
+          float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+          vec3 paletteColor(int idx) {
+            if (idx==0) return uPal0;
+            if (idx==1) return uPal1;
+            if (idx==2) return uPal2;
+            if (idx==3) return uPal3;
+            if (idx==4) return uPal4;
+            if (idx==5) return uPal5;
+            if (idx==6) return uPal6;
+            return uPal7;
+          }
+
+          int nearestPalette(vec3 cLin) {
+            float bestD = 1e9;
+            int bestI = 0;
+            for (int i=0;i<8;i++) {
+              vec3 p = paletteColor(i);
+              vec3 d = cLin - p;
+              float dd = dot(d,d);
+              if (dd < bestD) { bestD = dd; bestI = i; }
+            }
+            return bestI;
+          }
+
+          vec3 pigmentBlend(vec3 base, vec3 pigment, float a) {
+            vec3 mult = base * pigment;
+            return mix(base, mult, a);
+          }
+
+          void main() {
+            vec2 uv = vUv * uUVScale;
+
+            float grain = texture2D(uGrain, vUv * uGrainScale).r;
+            float pigmentNoise = texture2D(uPigmentNoise, vUv * uPigmentNoiseScale).r;
+
+            float h = texture2D(uHeight, uv).r;
+            vec3 nTex = texture2D(uNormal, uv).xyz * 2.0 - 1.0;
+            vec3 n = normalize(mix(normalize(vN), nTex, 0.95));
+
+            float inkMask = smoothstep(0.55, 0.92, h);
+            inkMask *= (0.92 + (grain - 0.5) * 0.10);
+
+            float cavity = 1.0 - smoothstep(0.18, 0.78, h);
+            float ridge  = smoothstep(0.22, 0.95, h);
+
+            vec3 col = uPaper + (grain - 0.5) * 0.08;
+
+            vec3 guideSrgb = texture2D(uPigmentGuide, uv).rgb;
+            vec3 guideLin = srgbToLin(guideSrgb);
+            float guideActive = step(0.02, luma(guideSrgb));
+
+            int pi = nearestPalette(guideLin);
+
+            float fx = float(pi) * 12.9898 + 0.123;
+            float fy = float(pi) * 78.233  + 0.456;
+            float jx = fract(sin(fx) * 43758.5453) - 0.5;
+            float jy = fract(sin(fy) * 96234.2345) - 0.5;
+            vec2 drift = uRegistration * vec2(jx, jy);
+
+            vec3 guideLin2 = srgbToLin(texture2D(uPigmentGuide, uv + drift).rgb);
+            int pi2 = nearestPalette(guideLin2);
+            vec3 pigment = paletteColor(pi2);
+
+            float cov = guideActive;
+            cov *= (0.70 + grain * 0.20 + (pigmentNoise - 0.5) * 0.15);
+            cov *= (1.0 - inkMask * 0.75);
+
+            float edge = exp(-abs(h - 0.55) * 18.0);
+            float pool = edge * uPigmentEdgePool;
+
+            cov = saturate(cov * uPigmentAlpha);
+
+            col = pigmentBlend(col, pigment, cov);
+            col *= (1.0 - pool * 0.08);
+
+            col = mix(col, uInk, inkMask * uInkAlpha);
+
+            vec3 L = normalize(vec3(0.4, 0.7, 0.5));
+            vec3 V = normalize(cameraPosition - vPos);
+            float ndl = max(dot(n, L), 0.0);
+
+            float ambient = 0.56;
+            float diffuse = ndl * 0.62;
+
+            vec3 H = normalize(L + V);
+            float spec = pow(max(dot(n, H), 0.0), 14.0) * 0.06;
+
+            col *= (ambient + diffuse);
+            col *= (1.0 - cavity * 0.14);
+            col *= (1.0 + ridge  * 0.06);
+            col += spec;
+
+            vec2 p = vUv - 0.5;
+            float vig = 1.0 - dot(p, p) * 0.6;
+            col *= vig;
+
+            col = clamp(col, 0.0, 1.0);
+            gl_FragColor = vec4(col, 1.0);
+          }
+        `,
+      });
+
+      const geo = new THREE.PlaneGeometry(1.4, 1.0, 1, 1);
+      const mesh = new THREE.Mesh(geo, material);
+      scene.add(mesh);
+
+      const frame = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.44, 1.04, 1, 1),
+        new THREE.MeshBasicMaterial({ color: 0x1a1a1a })
+      );
+      frame.position.z = -0.001;
+      scene.add(frame);
+
+      const clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        material.uniforms.uTime.value = clock.getElapsedTime();
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener("resize", () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+      });
+
+      const lineInput = document.getElementById("lineInput");
+      const colorInput = document.getElementById("colorInput");
+      const rebuildBtn = document.getElementById("rebuild");
+
+      let lineImg = null;
+      let colorImg = null;
+
+      async function rebuildMaps() {
+        if (lineImg) {
+          const c = imageToCanvas(lineImg, MAP_SIZE);
+          const heightU8 = buildHeightFromLineArt(c, 0.55, 2, 1.35);
+          const normalU8 = buildNormalFromHeight(heightU8, MAP_SIZE, MAP_SIZE, 10.0);
+
+          material.uniforms.uHeight.value.dispose();
+          material.uniforms.uNormal.value.dispose();
+
+          material.uniforms.uHeight.value = makeDataTextureR(MAP_SIZE, MAP_SIZE, heightU8);
+          material.uniforms.uNormal.value = makeDataTextureRGBA(MAP_SIZE, MAP_SIZE, normalU8);
+        }
+
+        if (colorImg) {
+          const c = imageToCanvas(colorImg, MAP_SIZE);
+          const guide = new THREE.CanvasTexture(c);
+          guide.wrapS = guide.wrapT = THREE.ClampToEdgeWrapping;
+          guide.magFilter = THREE.LinearFilter;
+          guide.minFilter = THREE.LinearMipmapLinearFilter;
+          guide.generateMipmaps = true;
+          guide.needsUpdate = true;
+
+          const old = material.uniforms.uPigmentGuide.value;
+          if (old && old.isTexture) old.dispose();
+          material.uniforms.uPigmentGuide.value = guide;
+
+          const pal = extractPaletteKMeans(c, 8, 3000, 10);
+          if (pal) {
+            paletteLinear = pal;
+            renderPaletteSwatches(paletteLinear);
+            const u = material.uniforms;
+
+            u.uPal0.value.set(...paletteLinear[0]);
+            u.uPal1.value.set(...paletteLinear[1]);
+            u.uPal2.value.set(...paletteLinear[2]);
+            u.uPal3.value.set(...paletteLinear[3]);
+            u.uPal4.value.set(...paletteLinear[4]);
+            u.uPal5.value.set(...paletteLinear[5]);
+            u.uPal6.value.set(...paletteLinear[6]);
+            u.uPal7.value.set(...paletteLinear[7]);
+
+            // paper tone from lightest centroid (last)
+            const paperLin = paletteLinear[7];
+            const pr = clamp01(linearToSrgb(paperLin[0]));
+            const pg = clamp01(linearToSrgb(paperLin[1]));
+            const pb = clamp01(linearToSrgb(paperLin[2]));
+            u.uPaper.value.set(pr, pg, pb);
+          }
+        }
+      }
+
+      lineInput.addEventListener("change", async (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        lineImg = await fileToImage(f);
+        await rebuildMaps();
+      });
+
+      colorInput.addEventListener("change", async (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        colorImg = await fileToImage(f);
+        await rebuildMaps();
+      });
+
+      rebuildBtn.addEventListener("click", async () => { await rebuildMaps(); });
+
+      // Auto-load defaults if present
+      async function tryAutoLoadDefaults() {
+        try {
+          lineImg = await urlToImage("./assets/line-art.png");
+        } catch {}
+        try {
+          colorImg = await urlToImage("./assets/color-ref.png");
+        } catch {}
+        if (lineImg || colorImg) await rebuildMaps();
+      }
+      tryAutoLoadDefaults();
+    </script>
+  </body>
+</html>
