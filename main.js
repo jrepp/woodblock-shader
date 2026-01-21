@@ -10,7 +10,6 @@ import {
   makeDataTextureR,
   makeDataTextureRGBA,
   makeRepeatDataTextureR,
-  setSingleChannelFormat,
   buildWoodGrainTex,
   buildWoodGrainTexRGB,
   buildPigmentNoiseTex,
@@ -47,8 +46,6 @@ controls.enableDamping = true;
 controls.target.set(0, 0.0, 0);
 
 const MAP_SIZE = 1024;
-
-setSingleChannelFormat(renderer.capabilities.isWebGL2 ? THREE.RedFormat : THREE.LuminanceFormat);
 
 let grainTex = makeRepeatDataTextureR(512, 512, buildWoodGrainTex(512));
 let woodColorTex = new THREE.DataTexture(buildWoodGrainTexRGB(512), 512, 512, THREE.RGBFormat);

@@ -88,14 +88,21 @@ export function imageToBleachedTexture(img, size = 512, desat = 0.75, bleach = 0
   return tex;
 }
 
-let singleChannelFormat = THREE.RedFormat;
-
-export function setSingleChannelFormat(format) {
-  singleChannelFormat = format;
-}
-
 export function makeDataTextureR(w, h, dataU8) {
-  const tex = new THREE.DataTexture(dataU8, w, h, singleChannelFormat);
+  let data = dataU8;
+  if (dataU8.length === w * h) {
+    const out = new Uint8Array(w * h * 4);
+    for (let i = 0; i < dataU8.length; i++) {
+      const v = dataU8[i];
+      const o = i * 4;
+      out[o] = v;
+      out[o + 1] = v;
+      out[o + 2] = v;
+      out[o + 3] = 255;
+    }
+    data = out;
+  }
+  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
