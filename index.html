@@ -62,18 +62,18 @@
         </div>
         <div class="control">
           <label for="inkEdge">Ink edge</label>
-          <input id="inkEdge" type="range" min="0.4" max="0.85" step="0.01" value="0.55" />
-          <output id="inkEdgeVal">0.55</output>
+          <input id="inkEdge" type="range" min="0.4" max="0.85" step="0.01" value="0.60" />
+          <output id="inkEdgeVal">0.60</output>
         </div>
         <div class="control">
           <label for="pigmentAlpha">Pigment alpha</label>
-          <input id="pigmentAlpha" type="range" min="0.2" max="0.8" step="0.01" value="0.70" />
-          <output id="pigmentAlphaVal">0.70</output>
+          <input id="pigmentAlpha" type="range" min="0.2" max="0.8" step="0.01" value="0.55" />
+          <output id="pigmentAlphaVal">0.55</output>
         </div>
           <div class="control">
             <label for="grainScale">Grain scale</label>
-            <input id="grainScale" type="range" min="0.8" max="4.0" step="0.05" value="2.0" />
-            <output id="grainScaleVal">2.00</output>
+          <input id="grainScale" type="range" min="0.8" max="4.0" step="0.05" value="1.40" />
+          <output id="grainScaleVal">1.40</output>
           </div>
           <div class="control">
             <label for="grainNormal">Grain normal</label>
@@ -696,7 +696,7 @@
 
           uUVScale: { value: new THREE.Vector2(1.0, 1.0) },
           uUVOffset: { value: new THREE.Vector2(0.0, 0.0) },
-          uGrainScale: { value: new THREE.Vector2(2.0, 2.0) },
+          uGrainScale: { value: new THREE.Vector2(1.4, 1.4) },
           uPigmentNoiseScale: { value: new THREE.Vector2(1.6, 1.6) },
           uPaperScale: { value: new THREE.Vector2(2.2, 2.2) },
 
@@ -713,8 +713,8 @@
           uPal7: { value: new THREE.Vector3(...paletteLinear[7]) },
 
           uInkAlpha: { value: 0.95 },
-          uInkEdge: { value: 0.55 },
-          uPigmentAlpha: { value: 0.70 },
+          uInkEdge: { value: 0.60 },
+          uPigmentAlpha: { value: 0.55 },
           uPigmentEdgePool: { value: 0.10 },
           uRegistration: { value: new THREE.Vector2(0.0012, -0.0008) },
           uVignetteStrength: { value: 0.35 },
@@ -838,16 +838,16 @@
             float inkMax = clamp(uInkEdge + 0.34, 0.6, 0.98);
             float ridge = smoothstep(inkMin, inkMax, h);
             float edge = length(vec2(dFdx(h), dFdy(h)));
-            float edgeMask = smoothstep(0.02, 0.08, edge);
+            float edgeMask = smoothstep(0.015, 0.05, edge);
             float inkMask = ridge * edgeMask;
             inkMask *= (0.92 + (grain - 0.5) * 0.10);
 
             float cavity = 1.0 - smoothstep(0.18, 0.78, h);
             float ridgeWide  = smoothstep(0.22, 0.95, h);
 
-            float grainAmt = mix(0.06, 0.13, 1.0 - inkMask);
+            float grainAmt = mix(0.05, 0.10, 1.0 - inkMask);
             vec3 col = uPaper + (grain - 0.5) * grainAmt;
-            col += (paperFiber - 0.5) * mix(0.03, 0.07, 1.0 - inkMask);
+            col += (paperFiber - 0.5) * mix(0.05, 0.10, 1.0 - inkMask);
 
             vec3 guideLin = srgbToLin(guideDriftSrgb);
             float maxc = max(guideDriftSrgb.r, max(guideDriftSrgb.g, guideDriftSrgb.b));
@@ -869,6 +869,7 @@
 
             col = pigmentBlend(col, pigment, cov);
             col *= (1.0 - pool * 0.08);
+            col *= (1.0 - cavity * 0.06);
 
             col = mix(col, uInk, inkMask * uInkAlpha);
 
@@ -883,7 +884,7 @@
             float spec = pow(max(dot(n, H), 0.0), 14.0) * 0.06 * uSpecularStrength;
 
             col *= (ambient + diffuse);
-            col *= (1.0 - cavity * 0.14);
+            col *= (1.0 - cavity * 0.08);
             col *= (1.0 + ridgeWide  * 0.06);
             col += spec;
 
