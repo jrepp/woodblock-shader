@@ -182,6 +182,7 @@ export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex
         float pool = poolEdge * uPigmentEdgePool;
 
         cov = saturate(cov * uPigmentAlpha);
+        if (uDebugMode > 5.5 && uDebugMode < 6.5) { gl_FragColor = vec4(vec3(cov), 1.0); return; }
 
         col = pigmentBlend(col, pigment, cov);
         col *= (1.0 - pool * 0.08);
