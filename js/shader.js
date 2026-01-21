@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex, pigmentMaskTex, paperTex, paletteLinear }) {
+export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex, pigmentMaskTex, woodColorTex, paperTex, paletteLinear }) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uHeight: { value: heightTex },
@@ -8,6 +8,7 @@ export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex
       uGrain: { value: grainTex },
       uPigmentNoise: { value: pigmentNoiseTex },
       uPigmentMask: { value: pigmentMaskTex },
+      uWoodColor: { value: woodColorTex },
       uPaperTex: { value: paperTex },
 
       uUVScale: { value: new THREE.Vector2(1.0, 1.0) },
@@ -64,6 +65,7 @@ export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex
       uniform sampler2D uGrain;
       uniform sampler2D uPigmentNoise;
       uniform sampler2D uPigmentMask;
+      uniform sampler2D uWoodColor;
       uniform sampler2D uPaperTex;
 
       uniform vec2 uUVScale;
@@ -132,6 +134,7 @@ export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex
         vec2 uvClamped = clamp(uvFlip, 0.001, 0.999);
 
         float grain = texture2D(uGrain, uvFlip * uGrainScale).r;
+        vec3 woodTint = texture2D(uWoodColor, uvFlip * uGrainScale).rgb;
         float pigmentNoise = texture2D(uPigmentNoise, uvFlip * uPigmentNoiseScale).r;
         float paperFiber = texture2D(uPaperTex, uvFlip * uPaperScale).r;
 
@@ -163,6 +166,7 @@ export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex
 
         float grainAmt = mix(0.07, 0.16, 1.0 - inkMask);
         vec3 col = uPaper + (grain - 0.5) * grainAmt;
+        col = mix(col, woodTint, 0.22);
         col += (paperFiber - 0.5) * mix(0.05, 0.12, 1.0 - inkMask);
 
         vec3 guideLin = srgbToLin(guideDriftSrgb);

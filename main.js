@@ -6,10 +6,12 @@ import {
   fileToImage,
   imageToCanvas,
   imageToGrayTexture,
+  imageToBleachedTexture,
   makeDataTextureR,
   makeDataTextureRGBA,
   makeRepeatDataTextureR,
   buildWoodGrainTex,
+  buildWoodGrainTexRGB,
   buildPigmentNoiseTex,
   buildPaperFiberTex,
   buildHeightFromLineArt,
@@ -46,6 +48,12 @@ controls.target.set(0, 0.0, 0);
 const MAP_SIZE = 1024;
 
 let grainTex = makeRepeatDataTextureR(512, 512, buildWoodGrainTex(512));
+let woodColorTex = new THREE.DataTexture(buildWoodGrainTexRGB(512), 512, 512, THREE.RGBFormat);
+woodColorTex.wrapS = woodColorTex.wrapT = THREE.RepeatWrapping;
+woodColorTex.magFilter = THREE.LinearFilter;
+woodColorTex.minFilter = THREE.LinearMipmapLinearFilter;
+woodColorTex.generateMipmaps = true;
+woodColorTex.needsUpdate = true;
 const pigmentNoiseTex = makeRepeatDataTextureR(512, 512, buildPigmentNoiseTex(512));
 const paperTex = makeRepeatDataTextureR(512, 512, buildPaperFiberTex(512));
 
@@ -67,6 +75,7 @@ const material = createMaterial({
   grainTex,
   pigmentNoiseTex,
   pigmentMaskTex,
+  woodColorTex,
   paperTex,
   paletteLinear,
 });
@@ -276,6 +285,11 @@ async function rebuildMaps() {
     const old = material.uniforms.uGrain.value;
     if (old && old.isTexture) old.dispose();
     material.uniforms.uGrain.value = next;
+
+    const colorNext = imageToBleachedTexture(grainImg, 512, 0.75, 0.4);
+    const oldColor = material.uniforms.uWoodColor.value;
+    if (oldColor && oldColor.isTexture) oldColor.dispose();
+    material.uniforms.uWoodColor.value = colorNext;
   }
 }
 

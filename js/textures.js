@@ -57,6 +57,37 @@ export function imageToGrayTexture(img, size = 512) {
   return makeRepeatDataTextureR(size, size, out);
 }
 
+export function imageToBleachedTexture(img, size = 512, desat = 0.75, bleach = 0.4) {
+  const { canvas } = imageToCanvas(img, size);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const imgData = ctx.getImageData(0, 0, size, size);
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i] / 255;
+    let g = data[i + 1] / 255;
+    let b = data[i + 2] / 255;
+    const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    r = r + (l - r) * desat;
+    g = g + (l - g) * desat;
+    b = b + (l - b) * desat;
+    r = r + (1.0 - r) * bleach;
+    g = g + (1.0 - g) * bleach;
+    b = b + (1.0 - b) * bleach;
+    data[i] = Math.round(clamp01(r) * 255);
+    data[i + 1] = Math.round(clamp01(g) * 255);
+    data[i + 2] = Math.round(clamp01(b) * 255);
+  }
+  ctx.putImageData(imgData, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.flipY = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function makeDataTextureR(w, h, dataU8) {
   const tex = new THREE.DataTexture(dataU8, w, h, THREE.RedFormat);
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -79,8 +110,25 @@ export function makeDataTextureRGBA(w, h, dataU8) {
   return tex;
 }
 
+export function makeDataTextureRGB(w, h, dataU8) {
+  const tex = new THREE.DataTexture(dataU8, w, h, THREE.RGBFormat);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.flipY = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function makeRepeatDataTextureR(w, h, dataU8) {
   const tex = makeDataTextureR(w, h, dataU8);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+export function makeRepeatDataTextureRGB(w, h, dataU8) {
+  const tex = makeDataTextureRGB(w, h, dataU8);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   return tex;
 }
@@ -193,6 +241,19 @@ export function buildWoodGrainTex(size = 512) {
       const g = 0.55 + 0.28 * bands + 0.17 * (pores - 0.5);
       data[y * size + x] = Math.round(clamp01(g) * 255);
     }
+  }
+  return data;
+}
+
+export function buildWoodGrainTexRGB(size = 512) {
+  const gray = buildWoodGrainTex(size);
+  const data = new Uint8Array(size * size * 3);
+  for (let i = 0; i < gray.length; i++) {
+    const v = gray[i];
+    const o = i * 3;
+    data[o] = v;
+    data[o + 1] = v;
+    data[o + 2] = v;
   }
   return data;
 }
