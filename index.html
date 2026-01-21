@@ -797,8 +797,9 @@
             float pigmentNoise = texture2D(uPigmentNoise, uvFlip * uPigmentNoiseScale).r;
             float paperFiber = texture2D(uPaperTex, uvFlip * uPaperScale).r;
 
-            float h = texture2D(uHeight, uvClamped).r;
+            float h = 1.0 - texture2D(uHeight, uvClamped).r;
             vec3 nTex = texture2D(uNormal, uvClamped).xyz * 2.0 - 1.0;
+            nTex.xy *= -1.0;
             vec3 guideSrgb = texture2D(uPigmentGuide, uvClamped).rgb;
             vec2 uvDrift = clamp(uvFlip + uRegistration, 0.001, 0.999);
             vec3 guideDriftSrgb = texture2D(uPigmentGuide, uvDrift).rgb;
