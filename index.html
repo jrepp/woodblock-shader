@@ -31,7 +31,7 @@
       .controls { display: flex; flex-direction: column; gap: 8px; }
       .control { display: flex; flex-direction: column; gap: 4px; }
       .control label { font-size: 11px; opacity: 0.9; }
-      .control output { font-size: 11px; opacity: 0.85; }
+      .control span { font-size: 11px; opacity: 0.85; }
       details { margin-top: 8px; }
       details > summary { cursor: pointer; user-select: none; }
       .minimized #hud-body { display: none; }
@@ -56,64 +56,52 @@
       <div id="hud-body" class="layout">
         <div class="controls">
         <div class="control">
-          <label for="inkAlpha">Ink alpha</label>
+          <label for="inkAlpha">Ink alpha: <span id="inkAlphaVal">0.95</span></label>
           <input id="inkAlpha" type="range" min="0.7" max="1.0" step="0.01" value="0.95" />
-          <output id="inkAlphaVal">0.95</output>
         </div>
         <div class="control">
-          <label for="inkEdge">Ink edge</label>
+          <label for="inkEdge">Ink edge: <span id="inkEdgeVal">0.60</span></label>
           <input id="inkEdge" type="range" min="0.4" max="0.85" step="0.01" value="0.60" />
-          <output id="inkEdgeVal">0.60</output>
         </div>
         <div class="control">
-          <label for="pigmentAlpha">Pigment alpha</label>
+          <label for="pigmentAlpha">Pigment alpha: <span id="pigmentAlphaVal">0.55</span></label>
           <input id="pigmentAlpha" type="range" min="0.2" max="0.8" step="0.01" value="0.55" />
-          <output id="pigmentAlphaVal">0.55</output>
         </div>
           <div class="control">
-            <label for="grainScale">Grain scale</label>
+            <label for="grainScale">Grain scale: <span id="grainScaleVal">1.40</span></label>
           <input id="grainScale" type="range" min="0.8" max="4.0" step="0.05" value="1.40" />
-          <output id="grainScaleVal">1.40</output>
           </div>
           <div class="control">
-            <label for="grainNormal">Grain normal</label>
+            <label for="grainNormal">Grain normal: <span id="grainNormalVal">0.08</span></label>
             <input id="grainNormal" type="range" min="0.0" max="0.2" step="0.01" value="0.08" />
-            <output id="grainNormalVal">0.08</output>
           </div>
           <div class="control">
-            <label for="pigmentNoiseScale">Pigment noise</label>
+            <label for="pigmentNoiseScale">Pigment noise: <span id="pigmentNoiseScaleVal">1.60</span></label>
             <input id="pigmentNoiseScale" type="range" min="0.6" max="3.0" step="0.05" value="1.6" />
-            <output id="pigmentNoiseScaleVal">1.60</output>
           </div>
         <div class="control">
-          <label for="registration">Registration</label>
+          <label for="registration">Registration: <span id="registrationVal">0.0012</span></label>
           <input id="registration" type="range" min="0.0" max="0.004" step="0.0002" value="0.0012" />
-          <output id="registrationVal">0.0012</output>
         </div>
         <div class="control">
-          <label for="heightThreshold">Line threshold</label>
+          <label for="heightThreshold">Line threshold: <span id="heightThresholdVal">0.45</span></label>
           <input id="heightThreshold" type="range" min="0.20" max="0.65" step="0.01" value="0.45" />
-          <output id="heightThresholdVal">0.45</output>
         </div>
         <div class="control">
-          <label for="heightBlur">Line blur</label>
+          <label for="heightBlur">Line blur: <span id="heightBlurVal">1</span></label>
           <input id="heightBlur" type="range" min="0" max="4" step="1" value="1" />
-          <output id="heightBlurVal">1</output>
         </div>
         <div class="control">
-          <label for="heightProfile">Line profile</label>
+          <label for="heightProfile">Line profile: <span id="heightProfileVal">1.60</span></label>
           <input id="heightProfile" type="range" min="1.0" max="2.2" step="0.05" value="1.6" />
-          <output id="heightProfileVal">1.60</output>
         </div>
           <div class="control">
-            <label for="vignette">Vignette</label>
+            <label for="vignette">Vignette: <span id="vignetteVal">0.35</span></label>
             <input id="vignette" type="range" min="0.0" max="0.6" step="0.02" value="0.35" />
-            <output id="vignetteVal">0.35</output>
           </div>
           <div class="control">
-            <label for="specular">Specular</label>
+            <label for="specular">Specular: <span id="specularVal">0.00</span></label>
             <input id="specular" type="range" min="0.0" max="0.06" step="0.002" value="0.00" />
-            <output id="specularVal">0.00</output>
           </div>
         </div>
         <div>
