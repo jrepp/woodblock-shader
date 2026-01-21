@@ -966,7 +966,7 @@
           const { canvas: c, uvScale, uvOffset } = imageToCanvas(activeLine, MAP_SIZE);
           material.uniforms.uUVScale.value.copy(uvScale);
           material.uniforms.uUVOffset.value.copy(uvOffset);
-          const heightU8 = buildHeightFromLineArt(c, 0.55, 2, 1.35);
+          const heightU8 = buildHeightFromLineArt(c, 0.48, 1, 1.6);
           const normalU8 = buildNormalFromHeight(heightU8, MAP_SIZE, MAP_SIZE, 10.0);
 
           material.uniforms.uHeight.value.dispose();
