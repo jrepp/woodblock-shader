@@ -194,6 +194,19 @@
         };
       }
 
+      function imageToGrayTexture(img, size = 512) {
+        const { canvas } = imageToCanvas(img, size);
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        const { data } = ctx.getImageData(0, 0, size, size);
+        const out = new Uint8Array(size * size);
+        for (let i = 0, p = 0; p < out.length; p++, i += 4) {
+          const r = data[i] / 255, g = data[i+1] / 255, b = data[i+2] / 255;
+          const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          out[p] = Math.round(l * 255);
+        }
+        return makeRepeatDataTextureR(size, size, out);
+      }
+
       function makeDataTextureR(w, h, dataU8) {
         const tex = new THREE.DataTexture(dataU8, w, h, THREE.RedFormat);
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
@@ -660,7 +673,7 @@
 
       const MAP_SIZE = 1024;
 
-      const grainTex = makeRepeatDataTextureR(512, 512, buildWoodGrainTex(512));
+      let grainTex = makeRepeatDataTextureR(512, 512, buildWoodGrainTex(512));
       const pigmentNoiseTex = makeRepeatDataTextureR(512, 512, buildPigmentNoiseTex(512));
       const paperTex = makeRepeatDataTextureR(512, 512, buildPaperFiberTex(512));
 
@@ -962,11 +975,13 @@
 
       const DEFAULT_LINE_URL = "./assets/line-art.png";
       const DEFAULT_COLOR_URL = "./assets/color-ref.png";
+      const DEFAULT_GRAIN_URL = "./assets/pearwood-texture.png";
 
       let defaultLineImg = null;
       let defaultColorImg = null;
       let lineImg = null;
       let colorImg = null;
+      let grainImg = null;
 
       function updateAspect(img) {
         if (!img) return;
@@ -1075,6 +1090,13 @@
             u.uPaper.value.set(pr, pg, pb);
           }
         }
+
+        if (grainImg) {
+          const next = imageToGrayTexture(grainImg, 512);
+          const old = material.uniforms.uGrain.value;
+          if (old && old.isTexture) old.dispose();
+          material.uniforms.uGrain.value = next;
+        }
       }
 
       lineInput.addEventListener("change", async (e) => {
@@ -1135,6 +1157,10 @@
         try {
           defaultColorImg = await urlToImage(DEFAULT_COLOR_URL);
           defaultColorImg._labelName = DEFAULT_COLOR_URL;
+        } catch {}
+        try {
+          grainImg = await urlToImage(DEFAULT_GRAIN_URL);
+          grainImg._labelName = DEFAULT_GRAIN_URL;
         } catch {}
         if (defaultLineImg || defaultColorImg) await rebuildMaps();
       }
