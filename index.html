@@ -29,7 +29,7 @@
         <div class="note">
           Load: (1) line art (B/W), (2) color reference.
           Mouse drag orbit. Scroll zoom.
-          Default assets auto-load if present in <code>assets/</code>.
+          Default assets auto-load from <code>assets/</code> (uploads override).
         </div>
       </div>
       <div class="row" style="margin-top:8px">
@@ -594,12 +594,20 @@
       const colorInput = document.getElementById("colorInput");
       const rebuildBtn = document.getElementById("rebuild");
 
+      const DEFAULT_LINE_URL = "./assets/line-art.png";
+      const DEFAULT_COLOR_URL = "./assets/color-ref.png";
+
+      let defaultLineImg = null;
+      let defaultColorImg = null;
       let lineImg = null;
       let colorImg = null;
 
       async function rebuildMaps() {
-        if (lineImg) {
-          const c = imageToCanvas(lineImg, MAP_SIZE);
+        const activeLine = lineImg || defaultLineImg;
+        const activeColor = colorImg || defaultColorImg;
+
+        if (activeLine) {
+          const c = imageToCanvas(activeLine, MAP_SIZE);
           const heightU8 = buildHeightFromLineArt(c, 0.55, 2, 1.35);
           const normalU8 = buildNormalFromHeight(heightU8, MAP_SIZE, MAP_SIZE, 10.0);
 
@@ -610,8 +618,8 @@
           material.uniforms.uNormal.value = makeDataTextureRGBA(MAP_SIZE, MAP_SIZE, normalU8);
         }
 
-        if (colorImg) {
-          const c = imageToCanvas(colorImg, MAP_SIZE);
+        if (activeColor) {
+          const c = imageToCanvas(activeColor, MAP_SIZE);
           const guide = new THREE.CanvasTexture(c);
           guide.wrapS = guide.wrapT = THREE.ClampToEdgeWrapping;
           guide.magFilter = THREE.LinearFilter;
@@ -667,12 +675,12 @@
       // Auto-load defaults if present
       async function tryAutoLoadDefaults() {
         try {
-          lineImg = await urlToImage("./assets/line-art.png");
+          defaultLineImg = await urlToImage(DEFAULT_LINE_URL);
         } catch {}
         try {
-          colorImg = await urlToImage("./assets/color-ref.png");
+          defaultColorImg = await urlToImage(DEFAULT_COLOR_URL);
         } catch {}
-        if (lineImg || colorImg) await rebuildMaps();
+        if (defaultLineImg || defaultColorImg) await rebuildMaps();
       }
       tryAutoLoadDefaults();
     </script>
