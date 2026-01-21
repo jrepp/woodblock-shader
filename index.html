@@ -55,16 +55,21 @@
       </div>
       <div id="hud-body" class="layout">
         <div class="controls">
-          <div class="control">
-            <label for="inkAlpha">Ink alpha</label>
-            <input id="inkAlpha" type="range" min="0.7" max="1.0" step="0.01" value="0.95" />
-            <output id="inkAlphaVal">0.95</output>
-          </div>
-          <div class="control">
-            <label for="pigmentAlpha">Pigment alpha</label>
-            <input id="pigmentAlpha" type="range" min="0.2" max="0.8" step="0.01" value="0.70" />
-            <output id="pigmentAlphaVal">0.70</output>
-          </div>
+        <div class="control">
+          <label for="inkAlpha">Ink alpha</label>
+          <input id="inkAlpha" type="range" min="0.7" max="1.0" step="0.01" value="0.95" />
+          <output id="inkAlphaVal">0.95</output>
+        </div>
+        <div class="control">
+          <label for="inkEdge">Ink edge</label>
+          <input id="inkEdge" type="range" min="0.4" max="0.85" step="0.01" value="0.55" />
+          <output id="inkEdgeVal">0.55</output>
+        </div>
+        <div class="control">
+          <label for="pigmentAlpha">Pigment alpha</label>
+          <input id="pigmentAlpha" type="range" min="0.2" max="0.8" step="0.01" value="0.70" />
+          <output id="pigmentAlphaVal">0.70</output>
+        </div>
           <div class="control">
             <label for="grainScale">Grain scale</label>
             <input id="grainScale" type="range" min="0.8" max="4.0" step="0.05" value="2.0" />
@@ -80,11 +85,26 @@
             <input id="pigmentNoiseScale" type="range" min="0.6" max="3.0" step="0.05" value="1.6" />
             <output id="pigmentNoiseScaleVal">1.60</output>
           </div>
-          <div class="control">
-            <label for="registration">Registration</label>
-            <input id="registration" type="range" min="0.0" max="0.004" step="0.0002" value="0.0012" />
-            <output id="registrationVal">0.0012</output>
-          </div>
+        <div class="control">
+          <label for="registration">Registration</label>
+          <input id="registration" type="range" min="0.0" max="0.004" step="0.0002" value="0.0012" />
+          <output id="registrationVal">0.0012</output>
+        </div>
+        <div class="control">
+          <label for="heightThreshold">Line threshold</label>
+          <input id="heightThreshold" type="range" min="0.35" max="0.65" step="0.01" value="0.48" />
+          <output id="heightThresholdVal">0.48</output>
+        </div>
+        <div class="control">
+          <label for="heightBlur">Line blur</label>
+          <input id="heightBlur" type="range" min="0" max="4" step="1" value="1" />
+          <output id="heightBlurVal">1</output>
+        </div>
+        <div class="control">
+          <label for="heightProfile">Line profile</label>
+          <input id="heightProfile" type="range" min="1.0" max="2.2" step="0.05" value="1.6" />
+          <output id="heightProfileVal">1.60</output>
+        </div>
           <div class="control">
             <label for="vignette">Vignette</label>
             <input id="vignette" type="range" min="0.0" max="0.6" step="0.02" value="0.35" />
@@ -693,6 +713,7 @@
           uPal7: { value: new THREE.Vector3(...paletteLinear[7]) },
 
           uInkAlpha: { value: 0.95 },
+          uInkEdge: { value: 0.55 },
           uPigmentAlpha: { value: 0.70 },
           uPigmentEdgePool: { value: 0.10 },
           uRegistration: { value: new THREE.Vector2(0.0012, -0.0008) },
@@ -742,6 +763,7 @@
           uniform vec3 uPal4; uniform vec3 uPal5; uniform vec3 uPal6; uniform vec3 uPal7;
 
           uniform float uInkAlpha;
+          uniform float uInkEdge;
           uniform float uPigmentAlpha;
           uniform float uPigmentEdgePool;
           uniform vec2  uRegistration;
@@ -812,7 +834,9 @@
             vec3 n = normalize(mix(normalize(vN), nTex, 0.95));
             n = normalize(n + vec3((grain - 0.5) * uGrainNormalStrength, (paperFiber - 0.5) * uGrainNormalStrength, 0.0));
 
-            float inkMask = smoothstep(0.55, 0.92, h);
+            float inkMin = uInkEdge;
+            float inkMax = clamp(uInkEdge + 0.34, 0.6, 0.98);
+            float inkMask = smoothstep(inkMin, inkMax, h);
             inkMask *= (0.92 + (grain - 0.5) * 0.10);
 
             float cavity = 1.0 - smoothstep(0.18, 0.78, h);
@@ -906,20 +930,28 @@
       const lineFileEl = document.getElementById("lineFile");
       const colorFileEl = document.getElementById("colorFile");
       const inkAlpha = document.getElementById("inkAlpha");
+      const inkEdge = document.getElementById("inkEdge");
       const pigmentAlpha = document.getElementById("pigmentAlpha");
       const grainScale = document.getElementById("grainScale");
       const grainNormal = document.getElementById("grainNormal");
       const pigmentNoiseScale = document.getElementById("pigmentNoiseScale");
       const registration = document.getElementById("registration");
+      const heightThreshold = document.getElementById("heightThreshold");
+      const heightBlur = document.getElementById("heightBlur");
+      const heightProfile = document.getElementById("heightProfile");
       const vignette = document.getElementById("vignette");
       const specular = document.getElementById("specular");
 
       const inkAlphaVal = document.getElementById("inkAlphaVal");
+      const inkEdgeVal = document.getElementById("inkEdgeVal");
       const pigmentAlphaVal = document.getElementById("pigmentAlphaVal");
       const grainScaleVal = document.getElementById("grainScaleVal");
       const grainNormalVal = document.getElementById("grainNormalVal");
       const pigmentNoiseScaleVal = document.getElementById("pigmentNoiseScaleVal");
       const registrationVal = document.getElementById("registrationVal");
+      const heightThresholdVal = document.getElementById("heightThresholdVal");
+      const heightBlurVal = document.getElementById("heightBlurVal");
+      const heightProfileVal = document.getElementById("heightProfileVal");
       const vignetteVal = document.getElementById("vignetteVal");
       const specularVal = document.getElementById("specularVal");
 
@@ -966,7 +998,12 @@
           const { canvas: c, uvScale, uvOffset } = imageToCanvas(activeLine, MAP_SIZE);
           material.uniforms.uUVScale.value.copy(uvScale);
           material.uniforms.uUVOffset.value.copy(uvOffset);
-          const heightU8 = buildHeightFromLineArt(c, 0.48, 1, 1.6);
+          const heightU8 = buildHeightFromLineArt(
+            c,
+            Number(heightThreshold.value),
+            Number(heightBlur.value),
+            Number(heightProfile.value)
+          );
           const normalU8 = buildNormalFromHeight(heightU8, MAP_SIZE, MAP_SIZE, 10.0);
 
           material.uniforms.uHeight.value.dispose();
@@ -1067,11 +1104,15 @@
       }
 
       bindRange(inkAlpha, inkAlphaVal, (v) => { material.uniforms.uInkAlpha.value = v; }, (v) => v.toFixed(2));
+      bindRange(inkEdge, inkEdgeVal, (v) => { material.uniforms.uInkEdge.value = v; }, (v) => v.toFixed(2));
       bindRange(pigmentAlpha, pigmentAlphaVal, (v) => { material.uniforms.uPigmentAlpha.value = v; }, (v) => v.toFixed(2));
       bindRange(grainScale, grainScaleVal, (v) => { material.uniforms.uGrainScale.value.set(v, v); }, (v) => v.toFixed(2));
       bindRange(grainNormal, grainNormalVal, (v) => { material.uniforms.uGrainNormalStrength.value = v; }, (v) => v.toFixed(2));
       bindRange(pigmentNoiseScale, pigmentNoiseScaleVal, (v) => { material.uniforms.uPigmentNoiseScale.value.set(v, v); }, (v) => v.toFixed(2));
       bindRange(registration, registrationVal, (v) => { material.uniforms.uRegistration.value.set(v, -v * 0.66); }, (v) => v.toFixed(4));
+      bindRange(heightThreshold, heightThresholdVal, () => { rebuildMaps(); }, (v) => v.toFixed(2));
+      bindRange(heightBlur, heightBlurVal, () => { rebuildMaps(); }, (v) => v.toFixed(0));
+      bindRange(heightProfile, heightProfileVal, () => { rebuildMaps(); }, (v) => v.toFixed(2));
       bindRange(vignette, vignetteVal, (v) => { material.uniforms.uVignetteStrength.value = v; }, (v) => v.toFixed(2));
       bindRange(specular, specularVal, (v) => { material.uniforms.uSpecularStrength.value = v; }, (v) => v.toFixed(2));
 
