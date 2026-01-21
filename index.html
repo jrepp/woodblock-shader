@@ -22,11 +22,15 @@
       #hud b { color: #fff; }
       #hud .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
       #hud input[type="file"] { color: #ddd; }
-      #hud select { background: #141414; color: #ddd; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 6px; }
+      #hud select, #hud input[type="range"] { background: #141414; color: #ddd; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 6px; }
       #hud .file { opacity: 0.9; font-size: 11px; }
       #palettes { display: flex; flex-direction: column; gap: 6px; }
       .palette-block { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
       .palette-label { min-width: 140px; opacity: 0.9; }
+      .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 12px; margin-top: 8px; }
+      .control { display: flex; flex-direction: column; gap: 4px; }
+      .control label { font-size: 11px; opacity: 0.9; }
+      .control output { font-size: 11px; opacity: 0.85; }
       .swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); }
       .note { opacity: 0.9; }
       a { color: #b7d5ff; text-decoration: none; }
@@ -60,6 +64,48 @@
         </label>
         <button id="rebuild">Rebuild maps</button>
         <div id="palettes"></div>
+      </div>
+      <div class="controls">
+        <div class="control">
+          <label for="inkAlpha">Ink alpha</label>
+          <input id="inkAlpha" type="range" min="0.7" max="1.0" step="0.01" value="0.95" />
+          <output id="inkAlphaVal">0.95</output>
+        </div>
+        <div class="control">
+          <label for="pigmentAlpha">Pigment alpha</label>
+          <input id="pigmentAlpha" type="range" min="0.2" max="0.8" step="0.01" value="0.70" />
+          <output id="pigmentAlphaVal">0.70</output>
+        </div>
+        <div class="control">
+          <label for="grainScale">Grain scale</label>
+          <input id="grainScale" type="range" min="0.8" max="4.0" step="0.05" value="2.0" />
+          <output id="grainScaleVal">2.00</output>
+        </div>
+        <div class="control">
+          <label for="grainNormal">Grain normal</label>
+          <input id="grainNormal" type="range" min="0.0" max="0.2" step="0.01" value="0.08" />
+          <output id="grainNormalVal">0.08</output>
+        </div>
+        <div class="control">
+          <label for="pigmentNoiseScale">Pigment noise</label>
+          <input id="pigmentNoiseScale" type="range" min="0.6" max="3.0" step="0.05" value="1.6" />
+          <output id="pigmentNoiseScaleVal">1.60</output>
+        </div>
+        <div class="control">
+          <label for="registration">Registration</label>
+          <input id="registration" type="range" min="0.0" max="0.004" step="0.0002" value="0.0012" />
+          <output id="registrationVal">0.0012</output>
+        </div>
+        <div class="control">
+          <label for="vignette">Vignette</label>
+          <input id="vignette" type="range" min="0.0" max="0.6" step="0.02" value="0.35" />
+          <output id="vignetteVal">0.35</output>
+        </div>
+        <div class="control">
+          <label for="specular">Specular</label>
+          <input id="specular" type="range" min="0.0" max="0.06" step="0.002" value="0.00" />
+          <output id="specularVal">0.00</output>
+        </div>
       </div>
     </div>
 
@@ -844,6 +890,23 @@
       const debugSelect = document.getElementById("debugSelect");
       const lineFileEl = document.getElementById("lineFile");
       const colorFileEl = document.getElementById("colorFile");
+      const inkAlpha = document.getElementById("inkAlpha");
+      const pigmentAlpha = document.getElementById("pigmentAlpha");
+      const grainScale = document.getElementById("grainScale");
+      const grainNormal = document.getElementById("grainNormal");
+      const pigmentNoiseScale = document.getElementById("pigmentNoiseScale");
+      const registration = document.getElementById("registration");
+      const vignette = document.getElementById("vignette");
+      const specular = document.getElementById("specular");
+
+      const inkAlphaVal = document.getElementById("inkAlphaVal");
+      const pigmentAlphaVal = document.getElementById("pigmentAlphaVal");
+      const grainScaleVal = document.getElementById("grainScaleVal");
+      const grainNormalVal = document.getElementById("grainNormalVal");
+      const pigmentNoiseScaleVal = document.getElementById("pigmentNoiseScaleVal");
+      const registrationVal = document.getElementById("registrationVal");
+      const vignetteVal = document.getElementById("vignetteVal");
+      const specularVal = document.getElementById("specularVal");
 
       const DEFAULT_LINE_URL = "./assets/line-art.png";
       const DEFAULT_COLOR_URL = "./assets/color-ref.png";
@@ -974,6 +1037,24 @@
         const v = Number(e.target.value || 0);
         material.uniforms.uDebugMode.value = v;
       });
+      function bindRange(input, output, onChange, format = (v) => Number(v).toFixed(2)) {
+        const update = () => {
+          const v = Number(input.value);
+          output.textContent = format(v);
+          onChange(v);
+        };
+        input.addEventListener("input", update);
+        update();
+      }
+
+      bindRange(inkAlpha, inkAlphaVal, (v) => { material.uniforms.uInkAlpha.value = v; }, (v) => v.toFixed(2));
+      bindRange(pigmentAlpha, pigmentAlphaVal, (v) => { material.uniforms.uPigmentAlpha.value = v; }, (v) => v.toFixed(2));
+      bindRange(grainScale, grainScaleVal, (v) => { material.uniforms.uGrainScale.value.set(v, v); }, (v) => v.toFixed(2));
+      bindRange(grainNormal, grainNormalVal, (v) => { material.uniforms.uGrainNormalStrength.value = v; }, (v) => v.toFixed(2));
+      bindRange(pigmentNoiseScale, pigmentNoiseScaleVal, (v) => { material.uniforms.uPigmentNoiseScale.value.set(v, v); }, (v) => v.toFixed(2));
+      bindRange(registration, registrationVal, (v) => { material.uniforms.uRegistration.value.set(v, -v * 0.66); }, (v) => v.toFixed(4));
+      bindRange(vignette, vignetteVal, (v) => { material.uniforms.uVignetteStrength.value = v; }, (v) => v.toFixed(2));
+      bindRange(specular, specularVal, (v) => { material.uniforms.uSpecularStrength.value = v; }, (v) => v.toFixed(2));
 
       // Auto-load defaults if present
       async function tryAutoLoadDefaults() {
