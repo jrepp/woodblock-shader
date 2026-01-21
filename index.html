@@ -590,7 +590,7 @@
         el.appendChild(row);
       }
 
-      function clampPalette(palette, satMax = 0.35, desat = 0.25) {
+      function clampPalette(palette, satMax = 0.5, desat = 0.1) {
         return palette.map((c) => {
           const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
           let r = c[0], g = c[1], b = c[2];
@@ -988,10 +988,14 @@
           const palHc = palH ? clampPalette(palH) : null;
           const palUc = palU ? clampPalette(palU) : null;
 
-          if (palKc) renderPaletteSwatches("K-means (grid)", palKc);
-          if (palMc) renderPaletteSwatches("Median cut", palMc);
-          if (palHc) renderPaletteSwatches("Histogram peaks", palHc);
-          if (palUc) renderPaletteSwatches("Hue bins", palUc);
+          if (palK) renderPaletteSwatches("K-means (raw)", palK);
+          if (palKc) renderPaletteSwatches("K-means (clamped)", palKc);
+          if (palM) renderPaletteSwatches("Median cut (raw)", palM);
+          if (palMc) renderPaletteSwatches("Median cut (clamped)", palMc);
+          if (palH) renderPaletteSwatches("Histogram (raw)", palH);
+          if (palHc) renderPaletteSwatches("Histogram (clamped)", palHc);
+          if (palU) renderPaletteSwatches("Hue bins (raw)", palU);
+          if (palUc) renderPaletteSwatches("Hue bins (clamped)", palUc);
 
           if (palKc) {
             paletteLinear = palKc;
