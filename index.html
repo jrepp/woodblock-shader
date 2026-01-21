@@ -332,6 +332,22 @@
         return data;
       }
 
+      function buildPaperFiberTex(size = 512) {
+        const data = new Uint8Array(size * size);
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const u = x / (size - 1);
+            const v = y / (size - 1);
+            const base = fbmNoisePeriodic(u, v, 10.0);
+            const fibers = Math.sin((u * 34.0 + fbmNoisePeriodic(u, v, 6.0) * 2.0) * Math.PI);
+            const clumps = fbmNoisePeriodic(u, v, 3.0);
+            const n = 0.55 * base + 0.25 * (fibers * 0.5 + 0.5) + 0.20 * clumps;
+            data[y * size + x] = Math.round(clamp01(n) * 255);
+          }
+        }
+        return data;
+      }
+
       function sampleGrid(canvas, gridSize = 60) {
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         const w = canvas.width, h = canvas.height;
@@ -548,6 +564,7 @@
 
       const grainTex = makeRepeatDataTextureR(512, 512, buildWoodGrainTex(512));
       const pigmentNoiseTex = makeRepeatDataTextureR(512, 512, buildPigmentNoiseTex(512));
+      const paperTex = makeRepeatDataTextureR(512, 512, buildPaperFiberTex(512));
 
       const emptyH = new Uint8Array(MAP_SIZE * MAP_SIZE);
       const emptyN = new Uint8Array(MAP_SIZE * MAP_SIZE * 4);
@@ -577,11 +594,13 @@
           uGrain: { value: grainTex },
           uPigmentNoise: { value: pigmentNoiseTex },
           uPigmentGuide: { value: pigmentGuideTex },
+          uPaperTex: { value: paperTex },
 
           uUVScale: { value: new THREE.Vector2(1.0, 1.0) },
           uUVOffset: { value: new THREE.Vector2(0.0, 0.0) },
           uGrainScale: { value: new THREE.Vector2(2.0, 2.0) },
           uPigmentNoiseScale: { value: new THREE.Vector2(1.6, 1.6) },
+          uPaperScale: { value: new THREE.Vector2(2.2, 2.2) },
 
           uPaper:  { value: new THREE.Color(0.93, 0.91, 0.86) },
           uInk:    { value: new THREE.Color(0.12, 0.10, 0.09) },
@@ -627,11 +646,13 @@
           uniform sampler2D uGrain;
           uniform sampler2D uPigmentNoise;
           uniform sampler2D uPigmentGuide;
+          uniform sampler2D uPaperTex;
 
           uniform vec2 uUVScale;
           uniform vec2 uUVOffset;
           uniform vec2 uGrainScale;
           uniform vec2 uPigmentNoiseScale;
+          uniform vec2 uPaperScale;
 
           uniform vec3 uPaper;
           uniform vec3 uInk;
@@ -690,6 +711,7 @@
 
             float grain = texture2D(uGrain, uvFlip * uGrainScale).r;
             float pigmentNoise = texture2D(uPigmentNoise, uvFlip * uPigmentNoiseScale).r;
+            float paperFiber = texture2D(uPaperTex, uvFlip * uPaperScale).r;
 
             float h = texture2D(uHeight, uvClamped).r;
             vec3 nTex = texture2D(uNormal, uvClamped).xyz * 2.0 - 1.0;
@@ -709,6 +731,7 @@
             float ridge  = smoothstep(0.22, 0.95, h);
 
             vec3 col = uPaper + (grain - 0.5) * 0.08;
+            col += (paperFiber - 0.5) * 0.05;
 
             vec3 guideLin = srgbToLin(guideSrgb);
             float guideActive = step(0.02, luma(guideSrgb));
