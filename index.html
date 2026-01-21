@@ -108,7 +108,11 @@
         const dx = Math.floor((size - dw) / 2);
         const dy = Math.floor((size - dh) / 2);
         ctx.drawImage(img, dx, dy, dw, dh);
-        return c;
+        return {
+          canvas: c,
+          uvScale: new THREE.Vector2(dw / size, dh / size),
+          uvOffset: new THREE.Vector2(dx / size, dy / size),
+        };
       }
 
       function makeDataTextureR(w, h, dataU8) {
@@ -575,6 +579,7 @@
           uPigmentGuide: { value: pigmentGuideTex },
 
           uUVScale: { value: new THREE.Vector2(1.0, 1.0) },
+          uUVOffset: { value: new THREE.Vector2(0.0, 0.0) },
           uGrainScale: { value: new THREE.Vector2(2.0, 2.0) },
           uPigmentNoiseScale: { value: new THREE.Vector2(1.6, 1.6) },
 
@@ -624,6 +629,7 @@
           uniform sampler2D uPigmentGuide;
 
           uniform vec2 uUVScale;
+          uniform vec2 uUVOffset;
           uniform vec2 uGrainScale;
           uniform vec2 uPigmentNoiseScale;
 
@@ -678,9 +684,9 @@
           }
 
           void main() {
-            vec2 uv = vUv * uUVScale;
-            vec2 uvFlip = vec2(vUv.x, 1.0 - vUv.y);
-            vec2 uvClamped = clamp(vec2(uv.x, 1.0 - uv.y), 0.001, 0.999);
+            vec2 uv = vUv * uUVScale + uUVOffset;
+            vec2 uvFlip = vec2(uv.x, 1.0 - uv.y);
+            vec2 uvClamped = clamp(uvFlip, 0.001, 0.999);
 
             float grain = texture2D(uGrain, uvFlip * uGrainScale).r;
             float pigmentNoise = texture2D(uPigmentNoise, uvFlip * uPigmentNoiseScale).r;
@@ -835,7 +841,9 @@
 
         if (activeLine) {
           updateAspect(activeLine);
-          const c = imageToCanvas(activeLine, MAP_SIZE);
+          const { canvas: c, uvScale, uvOffset } = imageToCanvas(activeLine, MAP_SIZE);
+          material.uniforms.uUVScale.value.copy(uvScale);
+          material.uniforms.uUVOffset.value.copy(uvOffset);
           const heightU8 = buildHeightFromLineArt(c, 0.55, 2, 1.35);
           const normalU8 = buildNormalFromHeight(heightU8, MAP_SIZE, MAP_SIZE, 10.0);
 
@@ -847,7 +855,7 @@
         }
 
         if (activeColor) {
-          const c = imageToCanvas(activeColor, MAP_SIZE);
+          const { canvas: c } = imageToCanvas(activeColor, MAP_SIZE);
           const guide = new THREE.CanvasTexture(c);
           guide.wrapS = guide.wrapT = THREE.ClampToEdgeWrapping;
           guide.magFilter = THREE.LinearFilter;
