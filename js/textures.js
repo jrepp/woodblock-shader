@@ -89,7 +89,7 @@ export function imageToBleachedTexture(img, size = 512, desat = 0.75, bleach = 0
 }
 
 export function makeDataTextureR(w, h, dataU8) {
-  const tex = new THREE.DataTexture(dataU8, w, h, THREE.RedFormat);
+  const tex = new THREE.DataTexture(dataU8, w, h, THREE.LuminanceFormat);
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
