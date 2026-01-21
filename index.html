@@ -14,10 +14,10 @@
     <style>
       html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
       #hud {
-        position: absolute; left: 12px; top: 12px; right: 12px;
+        position: absolute; left: 12px; top: 12px; width: min(620px, calc(100vw - 24px));
         color: #ddd; font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        background: rgba(0,0,0,0.45); padding: 10px 12px; border-radius: 10px;
-        max-width: 980px;
+        background: rgba(0,0,0,0.25); padding: 10px 12px; border-radius: 10px;
+        backdrop-filter: blur(4px);
       }
       #hud b { color: #fff; }
       #hud .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -34,6 +34,8 @@
       .control output { font-size: 11px; opacity: 0.85; }
       details { margin-top: 8px; }
       details > summary { cursor: pointer; user-select: none; }
+      .minimized #hud-body { display: none; }
+      .hud-toggle { margin-left: auto; background: rgba(0,0,0,0.35); color: #ddd; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
       .swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); }
       .note { opacity: 0.9; }
       a { color: #b7d5ff; text-decoration: none; }
@@ -49,8 +51,9 @@
           Mouse drag orbit. Scroll zoom.
           Default assets auto-load from <code>assets/</code> (uploads override).
         </div>
+        <button id="hudToggle" class="hud-toggle">Hide UI</button>
       </div>
-      <div class="layout">
+      <div id="hud-body" class="layout">
         <div class="controls">
           <div class="control">
             <label for="inkAlpha">Ink alpha</label>
@@ -898,6 +901,7 @@
       const colorInput = document.getElementById("colorInput");
       const rebuildBtn = document.getElementById("rebuild");
       const debugSelect = document.getElementById("debugSelect");
+      const hudToggle = document.getElementById("hudToggle");
       const lineFileEl = document.getElementById("lineFile");
       const colorFileEl = document.getElementById("colorFile");
       const inkAlpha = document.getElementById("inkAlpha");
@@ -1069,6 +1073,11 @@
       bindRange(registration, registrationVal, (v) => { material.uniforms.uRegistration.value.set(v, -v * 0.66); }, (v) => v.toFixed(4));
       bindRange(vignette, vignetteVal, (v) => { material.uniforms.uVignetteStrength.value = v; }, (v) => v.toFixed(2));
       bindRange(specular, specularVal, (v) => { material.uniforms.uSpecularStrength.value = v; }, (v) => v.toFixed(2));
+
+      hudToggle.addEventListener("click", () => {
+        const minimized = document.body.classList.toggle("minimized");
+        hudToggle.textContent = minimized ? "Show UI" : "Hide UI";
+      });
 
       // Auto-load defaults if present
       async function tryAutoLoadDefaults() {
