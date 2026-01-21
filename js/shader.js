@@ -164,6 +164,11 @@ export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex
         float cavity = 1.0 - smoothstep(0.18, 0.78, h);
         float ridgeWide  = smoothstep(0.22, 0.95, h);
 
+        float low = 1.0 - smoothstep(0.45, 0.7, h);
+        float lowInterior = low * (1.0 - edgeMask);
+        if (uDebugMode > 6.5 && uDebugMode < 7.5) { gl_FragColor = vec4(vec3(lowInterior), 1.0); return; }
+        if (uDebugMode > 7.5 && uDebugMode < 8.5) { gl_FragColor = vec4(vec3(edgeMask), 1.0); return; }
+
         float grainAmt = mix(0.07, 0.16, 1.0 - inkMask);
         vec3 col = uPaper + (grain - 0.5) * grainAmt;
         col = mix(col, woodTint, 0.22);
