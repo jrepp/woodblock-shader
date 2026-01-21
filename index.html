@@ -836,14 +836,18 @@
 
             float inkMin = uInkEdge;
             float inkMax = clamp(uInkEdge + 0.34, 0.6, 0.98);
-            float inkMask = smoothstep(inkMin, inkMax, h);
+            float ridge = smoothstep(inkMin, inkMax, h);
+            float edge = length(vec2(dFdx(h), dFdy(h)));
+            float edgeMask = smoothstep(0.02, 0.08, edge);
+            float inkMask = ridge * edgeMask;
             inkMask *= (0.92 + (grain - 0.5) * 0.10);
 
             float cavity = 1.0 - smoothstep(0.18, 0.78, h);
-            float ridge  = smoothstep(0.22, 0.95, h);
+            float ridgeWide  = smoothstep(0.22, 0.95, h);
 
-            vec3 col = uPaper + (grain - 0.5) * 0.08;
-            col += (paperFiber - 0.5) * 0.05;
+            float grainAmt = mix(0.06, 0.13, 1.0 - inkMask);
+            vec3 col = uPaper + (grain - 0.5) * grainAmt;
+            col += (paperFiber - 0.5) * mix(0.03, 0.07, 1.0 - inkMask);
 
             vec3 guideLin = srgbToLin(guideDriftSrgb);
             float maxc = max(guideDriftSrgb.r, max(guideDriftSrgb.g, guideDriftSrgb.b));
@@ -856,10 +860,10 @@
 
             float cov = guideActive;
             cov *= (0.70 + grain * 0.20 + (pigmentNoise - 0.5) * 0.15);
-            cov *= (1.0 - inkMask * 0.75);
+            cov *= (1.0 - inkMask * 0.90);
 
-            float edge = exp(-abs(h - 0.55) * 18.0);
-            float pool = edge * uPigmentEdgePool;
+            float poolEdge = exp(-abs(h - 0.55) * 18.0);
+            float pool = poolEdge * uPigmentEdgePool;
 
             cov = saturate(cov * uPigmentAlpha);
 
@@ -880,7 +884,7 @@
 
             col *= (ambient + diffuse);
             col *= (1.0 - cavity * 0.14);
-            col *= (1.0 + ridge  * 0.06);
+            col *= (1.0 + ridgeWide  * 0.06);
             col += spec;
 
             vec2 p = vUv - 0.5;
