@@ -264,6 +264,39 @@
         return sum;
       }
 
+      function hash2Periodic(x, y, period) {
+        const px = ((x % period) + period) % period;
+        const py = ((y % period) + period) % period;
+        let n = px * 374761393 + py * 668265263;
+        n = (n ^ (n >> 13)) * 1274126177;
+        n = n ^ (n >> 16);
+        return (n >>> 0) / 4294967295;
+      }
+
+      function valueNoisePeriodic(x, y, period) {
+        const xi = Math.floor(x), yi = Math.floor(y);
+        const xf = x - xi, yf = y - yi;
+        const v00 = hash2Periodic(xi, yi, period);
+        const v10 = hash2Periodic(xi + 1, yi, period);
+        const v01 = hash2Periodic(xi, yi + 1, period);
+        const v11 = hash2Periodic(xi + 1, yi + 1, period);
+        const u = xf * xf * (3 - 2 * xf);
+        const v = yf * yf * (3 - 2 * yf);
+        const a0 = lerp(v00, v10, u);
+        const a1 = lerp(v01, v11, u);
+        return lerp(a0, a1, v);
+      }
+
+      function fbmNoisePeriodic(u, v, basePeriod) {
+        let amp = 0.5, freq = 1.0, sum = 0.0;
+        for (let i = 0; i < 4; i++) {
+          const period = Math.max(1, Math.round(basePeriod * freq));
+          sum += valueNoisePeriodic(u * period, v * period, period) * amp;
+          amp *= 0.5; freq *= 2.0;
+        }
+        return sum;
+      }
+
       function buildWoodGrainTex(size = 512) {
         const data = new Uint8Array(size * size);
         for (let y = 0; y < size; y++) {
@@ -286,8 +319,8 @@
           for (let x = 0; x < size; x++) {
             const u = x / (size - 1);
             const v = y / (size - 1);
-            const blotch = fbmNoise(u * 2.0, v * 2.0);
-            const speck  = fbmNoise(u * 14.0, v * 14.0);
+            const blotch = fbmNoisePeriodic(u, v, 6.0);
+            const speck  = fbmNoisePeriodic(u, v, 24.0);
             const n = 0.70 * blotch + 0.30 * speck;
             data[y * size + x] = Math.round(clamp01(n) * 255);
           }
