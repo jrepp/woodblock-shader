@@ -23,8 +23,7 @@ import {
   extractPaletteHistogram,
   extractPaletteHueBins,
   clampPalette,
-  paletteTextureFromLinear,
-  floodFillWhiteWithPalette,
+  pigmentMaskFromLineArt,
 } from "./js/palette.js";
 import { createMaterial } from "./js/shader.js";
 
@@ -55,8 +54,8 @@ const emptyN = new Uint8Array(MAP_SIZE * MAP_SIZE * 4);
 for (let i=0;i<emptyN.length;i+=4) { emptyN[i+0]=128; emptyN[i+1]=128; emptyN[i+2]=255; emptyN[i+3]=255; }
 let heightTex = makeDataTextureR(MAP_SIZE, MAP_SIZE, emptyH);
 let normalTex = makeDataTextureRGBA(MAP_SIZE, MAP_SIZE, emptyN);
-let pigmentGuideTex = new THREE.Texture();
-pigmentGuideTex.needsUpdate = true;
+let pigmentMaskTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+pigmentMaskTex.needsUpdate = true;
 
 // Default palette
 let paletteLinear = DEFAULT_PALETTE_LINEAR.map((c) => c.slice());
@@ -67,7 +66,7 @@ const material = createMaterial({
   normalTex,
   grainTex,
   pigmentNoiseTex,
-  pigmentGuideTex,
+  pigmentMaskTex,
   paperTex,
   paletteLinear,
 });
@@ -142,7 +141,9 @@ let defaultLineImg = null;
 let defaultColorImg = null;
 let lineImg = null;
 let colorImg = null;
-  let grainImg = null;
+let grainImg = null;
+let lastLineCanvas = null;
+let lastPaletteRaw = null;
 
 function updateAspect(img) {
   if (!img) return;
@@ -177,6 +178,7 @@ async function rebuildMaps() {
   if (activeLine) {
     updateAspect(activeLine);
     const { canvas: c, uvScale, uvOffset } = imageToCanvas(activeLine, MAP_SIZE);
+    lastLineCanvas = c;
     material.uniforms.uUVScale.value.copy(uvScale);
     material.uniforms.uUVOffset.value.copy(uvOffset);
     const heightU8 = buildHeightFromLineArt(
@@ -192,21 +194,24 @@ async function rebuildMaps() {
 
     material.uniforms.uHeight.value = makeDataTextureR(MAP_SIZE, MAP_SIZE, heightU8);
     material.uniforms.uNormal.value = makeDataTextureRGBA(MAP_SIZE, MAP_SIZE, normalU8);
+
+    if (lastPaletteRaw) {
+      const mask = pigmentMaskFromLineArt(lastLineCanvas, lastPaletteRaw, 24);
+      const tex = new THREE.CanvasTexture(mask);
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.magFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.generateMipmaps = true;
+      tex.flipY = false;
+      tex.needsUpdate = true;
+      const old = material.uniforms.uPigmentMask.value;
+      if (old && old.isTexture) old.dispose();
+      material.uniforms.uPigmentMask.value = tex;
+    }
   }
 
   if (activeColor) {
     const { canvas: c } = imageToCanvas(activeColor, MAP_SIZE);
-    const guide = new THREE.CanvasTexture(c);
-    guide.wrapS = guide.wrapT = THREE.ClampToEdgeWrapping;
-    guide.magFilter = THREE.LinearFilter;
-    guide.minFilter = THREE.LinearMipmapLinearFilter;
-    guide.generateMipmaps = true;
-    guide.flipY = false;
-    guide.needsUpdate = true;
-
-    const old = material.uniforms.uPigmentGuide.value;
-    if (old && old.isTexture) old.dispose();
-    material.uniforms.uPigmentGuide.value = guide;
 
     const palettesEl = document.getElementById("palettes");
     palettesEl.innerHTML = "";
@@ -231,10 +236,20 @@ async function rebuildMaps() {
     if (palUc) renderPaletteSwatches("Hue bins (clamped)", palUc);
 
     if (palK) {
-      const paletteCanvas = paletteTextureFromLinear(palK);
-      floodFillWhiteWithPalette(c, palK);
-      guide.image = c;
-      guide.needsUpdate = true;
+      lastPaletteRaw = palK;
+      if (lastLineCanvas) {
+        const mask = pigmentMaskFromLineArt(lastLineCanvas, palK, 24);
+        const tex = new THREE.CanvasTexture(mask);
+        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.magFilter = THREE.LinearFilter;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.generateMipmaps = true;
+        tex.flipY = false;
+        tex.needsUpdate = true;
+        const old = material.uniforms.uPigmentMask.value;
+        if (old && old.isTexture) old.dispose();
+        material.uniforms.uPigmentMask.value = tex;
+      }
       paletteLinear = palKc || palK;
       const u = material.uniforms;
 

@@ -1,13 +1,13 @@
 import * as THREE from "three";
 
-export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex, pigmentGuideTex, paperTex, paletteLinear }) {
+export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex, pigmentMaskTex, paperTex, paletteLinear }) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uHeight: { value: heightTex },
       uNormal: { value: normalTex },
       uGrain: { value: grainTex },
       uPigmentNoise: { value: pigmentNoiseTex },
-      uPigmentGuide: { value: pigmentGuideTex },
+      uPigmentMask: { value: pigmentMaskTex },
       uPaperTex: { value: paperTex },
 
       uUVScale: { value: new THREE.Vector2(1.0, 1.0) },
@@ -63,7 +63,7 @@ export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex
       uniform sampler2D uNormal;
       uniform sampler2D uGrain;
       uniform sampler2D uPigmentNoise;
-      uniform sampler2D uPigmentGuide;
+      uniform sampler2D uPigmentMask;
       uniform sampler2D uPaperTex;
 
       uniform vec2 uUVScale;
@@ -138,9 +138,9 @@ export function createMaterial({ heightTex, normalTex, grainTex, pigmentNoiseTex
         float h = 1.0 - texture2D(uHeight, uvClamped).r;
         vec3 nTex = texture2D(uNormal, uvClamped).xyz * 2.0 - 1.0;
         nTex.xy *= -1.0;
-        vec3 guideSrgb = texture2D(uPigmentGuide, uvClamped).rgb;
+        vec3 guideSrgb = texture2D(uPigmentMask, uvClamped).rgb;
         vec2 uvDrift = clamp(uvFlip + uRegistration, 0.001, 0.999);
-        vec3 guideDriftSrgb = texture2D(uPigmentGuide, uvDrift).rgb;
+        vec3 guideDriftSrgb = texture2D(uPigmentMask, uvDrift).rgb;
 
         if (uDebugMode > 0.5 && uDebugMode < 1.5) { gl_FragColor = vec4(vec3(h), 1.0); return; }
         if (uDebugMode > 1.5 && uDebugMode < 2.5) { gl_FragColor = vec4(nTex * 0.5 + 0.5, 1.0); return; }

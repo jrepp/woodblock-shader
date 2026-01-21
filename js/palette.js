@@ -248,6 +248,16 @@ export function floodFillWhiteWithPalette(canvas, paletteLinear, tileSize = 24) 
   ctx.putImageData(img, 0, 0);
 }
 
+export function pigmentMaskFromLineArt(lineCanvas, paletteLinear, tileSize = 24) {
+  const mask = document.createElement("canvas");
+  mask.width = lineCanvas.width;
+  mask.height = lineCanvas.height;
+  const ctx = mask.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(lineCanvas, 0, 0);
+  floodFillWhiteWithPalette(mask, paletteLinear, tileSize);
+  return mask;
+}
+
 export function renderPaletteSwatches(labelText, paletteLinear) {
   const el = document.getElementById("palettes");
   const row = document.createElement("div");
