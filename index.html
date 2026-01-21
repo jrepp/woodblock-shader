@@ -679,10 +679,11 @@
 
           void main() {
             vec2 uv = vUv * uUVScale;
-            vec2 uvClamped = clamp(uv, 0.001, 0.999);
+            vec2 uvFlip = vec2(vUv.x, 1.0 - vUv.y);
+            vec2 uvClamped = clamp(vec2(uv.x, 1.0 - uv.y), 0.001, 0.999);
 
-            float grain = texture2D(uGrain, vUv * uGrainScale).r;
-            float pigmentNoise = texture2D(uPigmentNoise, vUv * uPigmentNoiseScale).r;
+            float grain = texture2D(uGrain, uvFlip * uGrainScale).r;
+            float pigmentNoise = texture2D(uPigmentNoise, uvFlip * uPigmentNoiseScale).r;
 
             float h = texture2D(uHeight, uvClamped).r;
             vec3 nTex = texture2D(uNormal, uvClamped).xyz * 2.0 - 1.0;
