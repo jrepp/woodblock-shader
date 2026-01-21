@@ -25,7 +25,7 @@ import {
   extractPaletteHistogram,
   extractPaletteHueBins,
   clampPalette,
-  pigmentMaskFromLineArt,
+  pigmentMaskFromHeight,
 } from "./js/palette.js";
 import { createMaterial } from "./js/shader.js";
 
@@ -153,6 +153,7 @@ let colorImg = null;
 let grainImg = null;
 let lastLineCanvas = null;
 let lastPaletteRaw = null;
+let lastHeightU8 = null;
 
 function updateAspect(img) {
   if (!img) return;
@@ -196,6 +197,7 @@ async function rebuildMaps() {
       Number(heightBlur.value),
       Number(heightProfile.value)
     );
+    lastHeightU8 = heightU8;
     const normalU8 = buildNormalFromHeight(heightU8, MAP_SIZE, MAP_SIZE, 10.0);
 
     material.uniforms.uHeight.value.dispose();
@@ -205,7 +207,7 @@ async function rebuildMaps() {
     material.uniforms.uNormal.value = makeDataTextureRGBA(MAP_SIZE, MAP_SIZE, normalU8);
 
     if (lastPaletteRaw) {
-      const mask = pigmentMaskFromLineArt(lastLineCanvas, lastPaletteRaw, 24);
+      const mask = pigmentMaskFromHeight(lastHeightU8, MAP_SIZE, MAP_SIZE, lastPaletteRaw);
       const tex = new THREE.CanvasTexture(mask);
       tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
       tex.magFilter = THREE.LinearFilter;
@@ -246,8 +248,8 @@ async function rebuildMaps() {
 
     if (palK) {
       lastPaletteRaw = palK;
-      if (lastLineCanvas) {
-        const mask = pigmentMaskFromLineArt(lastLineCanvas, palK, 24);
+      if (lastHeightU8) {
+        const mask = pigmentMaskFromHeight(lastHeightU8, MAP_SIZE, MAP_SIZE, palK);
         const tex = new THREE.CanvasTexture(mask);
         tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
         tex.magFilter = THREE.LinearFilter;

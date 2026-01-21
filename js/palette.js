@@ -1,5 +1,5 @@
 import { clamp01, linearToSrgb, srgbToLinear } from "./math.js";
-import { hash2 } from "./noise.js";
+import { hash2, fbmNoisePeriodic } from "./noise.js";
 
 export const DEFAULT_PALETTE_LINEAR = [
   [srgbToLinear(0.12), srgbToLinear(0.10), srgbToLinear(0.09)],
@@ -248,13 +248,47 @@ export function floodFillWhiteWithPalette(canvas, paletteLinear, tileSize = 24) 
   ctx.putImageData(img, 0, 0);
 }
 
-export function pigmentMaskFromLineArt(lineCanvas, paletteLinear, tileSize = 24) {
+export function pigmentMaskFromHeight(heightU8, w, h, paletteLinear) {
   const mask = document.createElement("canvas");
-  mask.width = lineCanvas.width;
-  mask.height = lineCanvas.height;
+  mask.width = w;
+  mask.height = h;
   const ctx = mask.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(lineCanvas, 0, 0);
-  floodFillWhiteWithPalette(mask, paletteLinear, tileSize);
+  const img = ctx.createImageData(w, h);
+  const data = img.data;
+
+  const fillRate = 0.22 + 0.08 * hash2(w, h);
+  const white = [0.97, 0.97, 0.95];
+  const fillMix = 0.7;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      const hgt = heightU8[p] / 255;
+      const low = hgt < 0.55 ? 1.0 : 0.0;
+      const u = x / w;
+      const v = y / h;
+      const noise = fbmNoisePeriodic(u, v, 6.0);
+      const allow = (noise < fillRate) ? 1.0 : 0.0;
+
+      let r = white[0], g = white[1], b = white[2];
+      if (low * allow > 0.5) {
+        const pick = Math.floor(fbmNoisePeriodic(u + 11.3, v + 4.7, 5.0) * paletteLinear.length);
+        const lin = paletteLinear[pick % paletteLinear.length];
+        const sr = lin[0], sg = lin[1], sb = lin[2];
+        r = white[0] * (1 - fillMix) + sr * fillMix;
+        g = white[1] * (1 - fillMix) + sg * fillMix;
+        b = white[2] * (1 - fillMix) + sb * fillMix;
+      }
+
+      const o = p * 4;
+      data[o + 0] = Math.round(clamp01(r) * 255);
+      data[o + 1] = Math.round(clamp01(g) * 255);
+      data[o + 2] = Math.round(clamp01(b) * 255);
+      data[o + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(img, 0, 0);
   return mask;
 }
 
