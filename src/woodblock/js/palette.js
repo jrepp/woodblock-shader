@@ -12,6 +12,17 @@ export const DEFAULT_PALETTE_LINEAR = [
   [srgbToLinear(0.93), srgbToLinear(0.91), srgbToLinear(0.86)]
 ];
 
+export const DEFAULT_PIGMENT_PROPS = [
+  { opacity: 0.9, chroma: 0.85, valueBias: 0.06 },
+  { opacity: 0.8, chroma: 0.75, valueBias: 0.12 },
+  { opacity: 0.7, chroma: 0.65, valueBias: 0.08 },
+  { opacity: 0.75, chroma: 0.7, valueBias: 0.05 },
+  { opacity: 0.78, chroma: 0.68, valueBias: 0.04 },
+  { opacity: 0.72, chroma: 0.7, valueBias: 0.06 },
+  { opacity: 0.68, chroma: 0.6, valueBias: 0.08 },
+  { opacity: 0.5, chroma: 0.2, valueBias: 0.0 },
+];
+
 export function sampleGrid(canvas, gridSize = 60) {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const w = canvas.width, h = canvas.height;

@@ -1,0 +1,123 @@
+import { proxy } from "valtio";
+import { BRUSH_MODES, BRUSH_TYPES, COMPUTE_BACKENDS, DEBUG_LABELS } from "./constants.js";
+
+export const CONTROL_KEYS = Object.freeze({
+  pigmentAlpha: "pigmentAlpha",
+  pigmentChromaLimit: "pigmentChromaLimit",
+  pigmentNoiseStrength: "pigmentNoiseStrength",
+  pigmentGranularity: "pigmentGranularity",
+  pigmentValueBias: "pigmentValueBias",
+  pigmentEdgePooling: "pigmentEdgePooling",
+  pigmentFlowStrength: "pigmentFlowStrength",
+  pigmentNoiseScale: "pigmentNoiseScale",
+  registration: "registration",
+  fillLowMin: "fillLowMin",
+  fillLowMax: "fillLowMax",
+  fillEdgeScale: "fillEdgeScale",
+  inkAlpha: "inkAlpha",
+  inkEdge: "inkEdge",
+  inkWarmth: "inkWarmth",
+  heightThreshold: "heightThreshold",
+  heightBlur: "heightBlur",
+  heightProfile: "heightProfile",
+  carveContrast: "carveContrast",
+  woodAbsorbency: "woodAbsorbency",
+  woodFiberStrength: "woodFiberStrength",
+  woodCapillary: "woodCapillary",
+  woodPoolingBias: "woodPoolingBias",
+  woodStainRate: "woodStainRate",
+  woodDryingRate: "woodDryingRate",
+  woodMassRetention: "woodMassRetention",
+  woodGrainInfluence: "woodGrainInfluence",
+  woodReliefBias: "woodReliefBias",
+  grainScale: "grainScale",
+  grainNormal: "grainNormal",
+  computeBackend: "computeBackend",
+  paintEnabled: "paintEnabled",
+  brushSize: "brushSize",
+  brushOpacity: "brushOpacity",
+  brushMode: "brushMode",
+  brushType: "brushType",
+  paintInfluence: "paintInfluence",
+  vignette: "vignette",
+  specular: "specular",
+  debugMode: "debugMode",
+  selectedPigmentIndex: "selectedPigmentIndex",
+  selectedPaletteLabel: "selectedPaletteLabel",
+  workflowMode: "workflowMode",
+  auxCollapsed: "auxCollapsed",
+  debugCollapsed: "debugCollapsed",
+  layerCarve: "layerCarve",
+  layerPigment: "layerPigment",
+  layerPaint: "layerPaint",
+  layerGrain: "layerGrain",
+  layerDebugOverlay: "layerDebugOverlay",
+});
+
+export const DEFAULT_CONTROLS = {
+  pigmentAlpha: 0.55,
+  pigmentChromaLimit: 0.62,
+  pigmentNoiseStrength: 0.18,
+  pigmentGranularity: 0.22,
+  pigmentValueBias: 0.12,
+  pigmentEdgePooling: 0.12,
+  pigmentFlowStrength: 0.6,
+  pigmentNoiseScale: 1.6,
+  registration: 0.0012,
+  fillLowMin: 0.55,
+  fillLowMax: 0.8,
+  fillEdgeScale: 6.0,
+  inkAlpha: 0.95,
+  inkEdge: 0.6,
+  inkWarmth: 0.25,
+  heightThreshold: 0.45,
+  heightBlur: 1,
+  heightProfile: 1.6,
+  carveContrast: 1.15,
+  woodAbsorbency: 1.05,
+  woodFiberStrength: 0.65,
+  woodCapillary: 1.0,
+  woodPoolingBias: 0.1,
+  woodStainRate: 0.02,
+  woodDryingRate: 0.02,
+  woodMassRetention: 0.85,
+  woodGrainInfluence: 0.3,
+  woodReliefBias: 1.0,
+  grainScale: 1.4,
+  grainNormal: 0.08,
+  computeBackend: COMPUTE_BACKENDS.CPU,
+  paintEnabled: false,
+  brushSize: 28,
+  brushOpacity: 0.85,
+  brushMode: BRUSH_MODES.ADD,
+  brushType: BRUSH_TYPES[0],
+  paintInfluence: 1.0,
+  vignette: 0.35,
+  specular: 0.0,
+  debugMode: DEBUG_LABELS[0],
+  selectedPigmentIndex: 0,
+  selectedPaletteLabel: "Default palette",
+  workflowMode: "Artist",
+  auxCollapsed: true,
+  debugCollapsed: true,
+  layerCarve: true,
+  layerPigment: true,
+  layerPaint: true,
+  layerGrain: true,
+  layerDebugOverlay: false,
+};
+
+export const controlsStore = proxy({ ...DEFAULT_CONTROLS });
+
+export function setControl(key, value) {
+  if (!Object.prototype.hasOwnProperty.call(controlsStore, key)) return;
+  controlsStore[key] = value;
+}
+
+export function setControls(partial) {
+  if (!partial) return;
+  for (const [key, value] of Object.entries(partial)) {
+    if (!Object.prototype.hasOwnProperty.call(controlsStore, key)) continue;
+    controlsStore[key] = value;
+  }
+}

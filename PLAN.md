@@ -14,19 +14,27 @@
 - Debug map preview selector for height/normal/guide/grain/noise.
 
 ## Near-term roadmap (runtime)
-1. **Paper presence**
-   - Procedural paper fiber texture (runtime) and controls for intensity/scale.
-   - Optional toggle for vignette/aging.
-2. **Pigment behavior**
-   - Masking to keep pigments off blank paper (improve guide-based coverage logic).
-   - Registration drift applied consistently in the same UV space as linework.
-   - Add pigment-specific parameters (alpha/edge pooling).
-3. **Relief clarity**
-   - Confirm height profile (flat ridge top, rounded bevel) and normal strength.
-   - Option to blend grain into normal/height for stronger wood interaction.
-4. **Color guardrails**
-   - Saturation clamp or desaturation pass to keep pigments period-correct.
-   - Palette selection UI to pick the preferred extraction method.
+1. **PBP buffers (CPU)**
+   - Allocate `pbpPigmentId`, `pbpCoverage`, `pbpWater`, `pbpMass`, `pbpEdgePool`, `pbpStain`.
+   - Add debug views to visualize each field.
+   - Add profiling counters for stamp/diffuse/upload/total time.
+   - **Progress:** buffers allocated + hooked into shader debug views, coverage used in shading; added cavity/pooling/flow debug modes.
+2. **Brush kernels**
+   - Implement Daubing/Rough/Smudge CPU stamp kernels.
+   - Add load/depletion and pressure response.
+   - Cache per‑brush kernels and update only dirty regions.
+   - **Progress:** stamp kernels live, smudge redistributes, dirty region updates in PBP engine.
+3. **Wood‑specific substrate**
+   - Rename paper controls to wood‑pore/wood‑fiber semantics in UI + shader.
+   - Retune spread/pooling for wood.
+   - **Progress:** UI + shader renamed to wood absorbency/fiber; retune pending.
+4. **Auto‑fill → PBP**
+   - Seed pigment fields from relief + palette, then time‑step with grain/flow guidance.
+   - Run multi‑rate simulation (20–30 Hz) while rendering at 60 Hz.
+   - **Progress:** auto‑fill seeds PBP buffers + time‑stepped diffusion at 30 Hz.
+5. **Color guardrails**
+   - Clamp chroma and constrain opacity per pigment.
+   - **Progress:** per‑pigment opacity/chroma/value bias profiles added to shader; defaults wired.
 
 ## Production roadmap (Blender/asset pipeline)
 1. **Asset contract**

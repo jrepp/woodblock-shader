@@ -13,12 +13,13 @@ import {
   buildWoodGrainTex,
   buildWoodGrainTexRGBA,
   buildPigmentNoiseTex,
-  buildPaperFiberTex,
+  buildWoodFiberTex,
   buildHeightFromLineArt,
   buildNormalFromHeight,
 } from "./js/textures.js";
 import {
   DEFAULT_PALETTE_LINEAR,
+  DEFAULT_PIGMENT_PROPS,
   renderPaletteSwatches,
   extractPaletteKMeans,
   extractPaletteMedianCut,
@@ -55,7 +56,7 @@ woodColorTex.minFilter = THREE.LinearMipmapLinearFilter;
 woodColorTex.generateMipmaps = true;
 woodColorTex.needsUpdate = true;
 const pigmentNoiseTex = makeRepeatDataTextureR(512, 512, buildPigmentNoiseTex(512));
-const paperTex = makeRepeatDataTextureR(512, 512, buildPaperFiberTex(512));
+const woodFiberTex = makeRepeatDataTextureR(512, 512, buildWoodFiberTex(512));
 
 const emptyH = new Uint8Array(MAP_SIZE * MAP_SIZE);
 const emptyN = new Uint8Array(MAP_SIZE * MAP_SIZE * 4);
@@ -76,8 +77,9 @@ const material = createMaterial({
   pigmentNoiseTex,
   pigmentMaskTex,
   woodColorTex,
-  paperTex,
+  woodFiberTex,
   paletteLinear,
+  pigmentProfiles: DEFAULT_PIGMENT_PROPS,
 });
 
 const BASE_PLANE = 1.0;

@@ -2,12 +2,87 @@ import * as THREE from "three";
 import { clamp01, srgbToLinear } from "./math.js";
 import { fbmNoise, fbmNoisePeriodic } from "./noise.js";
 
+export function buildEdgeFromHeight(heightU8, w, h, scale = 6.0) {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - 1);
+    const y1 = Math.min(h - 1, y + 1);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - 1);
+      const x1 = Math.min(w - 1, x + 1);
+      const hL = heightU8[y * w + x0] / 255;
+      const hR = heightU8[y * w + x1] / 255;
+      const hD = heightU8[y0 * w + x] / 255;
+      const hU = heightU8[y1 * w + x] / 255;
+      const edge = Math.min(1, Math.hypot(hR - hL, hU - hD) * scale);
+      out[y * w + x] = Math.round(edge * 255);
+    }
+  }
+  return out;
+}
+
+export function buildCavityFromHeight(heightU8, w, h, low = 0.25, high = 0.75) {
+  const out = new Uint8Array(w * h);
+  const inv = 1 / (high - low);
+  for (let i = 0; i < out.length; i++) {
+    const hgt = heightU8[i] / 255;
+    const t = clamp01((high - hgt) * inv);
+    out[i] = Math.round(t * t * 255);
+  }
+  return out;
+}
+
+export function buildFlowFromHeight(heightU8, w, h, scale = 1.0) {
+  const out = new Uint8Array(w * h * 2);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - 1);
+    const y1 = Math.min(h - 1, y + 1);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - 1);
+      const x1 = Math.min(w - 1, x + 1);
+      const hL = heightU8[y * w + x0] / 255;
+      const hR = heightU8[y * w + x1] / 255;
+      const hD = heightU8[y0 * w + x] / 255;
+      const hU = heightU8[y1 * w + x] / 255;
+      let dx = (hR - hL) * scale;
+      let dy = (hU - hD) * scale;
+      const len = Math.hypot(dx, dy) || 1;
+      dx /= len;
+      dy /= len;
+      const o = (y * w + x) * 2;
+      out[o] = Math.round((dx * 0.5 + 0.5) * 255);
+      out[o + 1] = Math.round((dy * 0.5 + 0.5) * 255);
+    }
+  }
+  return out;
+}
+
+export function buildPoolingFromHeight(heightU8, edgeU8, cavityU8, w, h, edgeWeight = 0.6, cavityWeight = 0.4) {
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < out.length; i++) {
+    const edge = edgeU8[i] / 255;
+    const cav = cavityU8[i] / 255;
+    const v = clamp01(edge * edgeWeight + cav * cavityWeight);
+    out[i] = Math.round(v * 255);
+  }
+  return out;
+}
+
 export async function urlToImage(url) {
   const img = new Image();
-  img.crossOrigin = "anonymous";
+  if (/^https?:/i.test(url)) {
+    img.crossOrigin = "anonymous";
+  }
   img.decoding = "async";
+  const loaded = new Promise((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = (err) => reject(err);
+  });
   img.src = url;
-  await img.decode();
+  await loaded;
+  if (img.decode) {
+    try { await img.decode(); } catch {}
+  }
   return img;
 }
 
@@ -15,8 +90,15 @@ export async function fileToImage(file) {
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.decoding = "async";
+  const loaded = new Promise((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = (err) => reject(err);
+  });
   img.src = url;
-  await img.decode();
+  await loaded;
+  if (img.decode) {
+    try { await img.decode(); } catch {}
+  }
   URL.revokeObjectURL(url);
   return img;
 }
@@ -300,7 +382,7 @@ export function buildPigmentNoiseTex(size = 512) {
   return data;
 }
 
-export function buildPaperFiberTex(size = 512) {
+export function buildWoodFiberTex(size = 512) {
   const data = new Uint8Array(size * size);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
