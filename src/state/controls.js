@@ -52,6 +52,8 @@ export const CONTROL_KEYS = Object.freeze({
   layerPaint: "layerPaint",
   layerGrain: "layerGrain",
   layerDebugOverlay: "layerDebugOverlay",
+  pbpPigmentSet: "pbpPigmentSet",
+  pbpTextureSize: "pbpTextureSize",
 });
 
 export const DEFAULT_CONTROLS = {
@@ -105,6 +107,8 @@ export const DEFAULT_CONTROLS = {
   layerPaint: true,
   layerGrain: true,
   layerDebugOverlay: false,
+  pbpPigmentSet: [1, 2, 3, 4],
+  pbpTextureSize: 1024,
 };
 
 export const controlsStore = proxy({ ...DEFAULT_CONTROLS });

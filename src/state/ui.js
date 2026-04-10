@@ -17,5 +17,8 @@ export const uiStore = proxy({
     message: "",
     type: "",
     targetId: "",
+    payload: null,
+    confirmLabel: "",
+    confirmTone: "",
   },
 });

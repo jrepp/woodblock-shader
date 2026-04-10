@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
-import WoodblockScene from "./WoodblockScene.jsx";
+import WebGPUView from "./WebGPUView.jsx";
 import { fileToImage, urlToImage } from "./woodblock/js/textures.js";
 import { DEFAULT_PALETTE_LINEAR, DEFAULT_PIGMENT_PROPS } from "./woodblock/js/palette.js";
 import PbpBridgePanel from "./components/PbpBridgePanel.jsx";
@@ -17,6 +17,7 @@ import PresetModal from "./components/PresetModal.jsx";
 import ConfirmModal from "./components/ConfirmModal.jsx";
 import usePbpDebugBridge from "./hooks/usePbpDebugBridge.js";
 import { BRUSH_MODES, BRUSH_TYPES, COMPUTE_BACKENDS, DEBUG_LABELS } from "./state/constants.js";
+import { DEBUG_MODES } from "./state/debugModes.js";
 import { CONTROL_KEYS, controlsStore, setControl, setControls } from "./state/controls.js";
 import { loadPresetsFromStorage, savePresetsToStorage } from "./state/presets.js";
 import { usePresets } from "./state/usePresets.js";
@@ -165,6 +166,7 @@ export default function App() {
   const [lineImg, setLineImg] = useState(null);
   const [colorImg, setColorImg] = useState(null);
   const [grainImg, setGrainImg] = useState(null);
+  const pendingTextureSizeRef = useRef(null);
 
   const [paletteSets, setPaletteSets] = useState([]);
   const [clearPaintNonce, setClearPaintNonce] = useState(0);
@@ -463,6 +465,191 @@ export default function App() {
     );
   };
 
+  const handlePresetCopy = async (type) => {
+    let payload = null;
+    let label = "";
+    if (type === "brush") {
+      payload = buildBrushPresetPayload();
+      label = ui.presetName || "Brush preset";
+    }
+    if (type === "pigment") {
+      payload = buildPigmentPresetPayload();
+      label = ui.presetName || "Pigment preset";
+    }
+    if (type === "medium") {
+      payload = buildMediumPresetPayload();
+      label = ui.presetName || "Medium preset";
+    }
+    if (!payload) return;
+    const preset = { type, label, data: payload };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(preset));
+    } catch {}
+  };
+
+  const handlePresetPaste = async (type) => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
+      const parsed = JSON.parse(text);
+      if (!parsed?.data) return;
+      if (parsed.type && parsed.type !== type) return;
+      const label = parsed.label || "Imported preset";
+      const id = `import-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+      const entry = { id, label, data: parsed.data };
+      if (type === "brush") {
+        const next = [...presetStore.savedBrushPresets, entry];
+        presetStore.savedBrushPresets = next;
+        uiStore.selectedBrushPresetId = id;
+        applyBrushPreset(entry);
+        savePresetsToStorage("brush", next);
+        return;
+      }
+      if (type === "pigment") {
+        const next = [...presetStore.savedPigmentPresets, entry];
+        presetStore.savedPigmentPresets = next;
+        uiStore.selectedPigmentPresetId = id;
+        applyPigmentPreset(entry);
+        savePresetsToStorage("pigment", next);
+        return;
+      }
+      if (type === "medium") {
+        const next = [...presetStore.savedMediumPresets, entry];
+        presetStore.savedMediumPresets = next;
+        uiStore.selectedMediumPresetId = id;
+        applyMediumPreset(entry);
+        savePresetsToStorage("medium", next);
+      }
+    } catch {}
+  };
+
+  const openPresetDeleteConfirm = (type, targetId, label) => {
+    uiStore.confirmModal = {
+      open: true,
+      title: "Delete preset",
+      message: `Delete ${type} preset "${label}"? This cannot be undone.`,
+      type,
+      targetId,
+      payload: null,
+      confirmLabel: "Delete",
+      confirmTone: "danger",
+    };
+  };
+
+  const closeConfirmModal = () => {
+    uiStore.confirmModal = {
+      open: false,
+      title: "",
+      message: "",
+      type: "",
+      targetId: "",
+      payload: null,
+      confirmLabel: "",
+      confirmTone: "",
+    };
+  };
+
+  const openTextureSizeConfirm = (size) => {
+    pendingTextureSizeRef.current = size;
+    uiStore.confirmModal = {
+      open: true,
+      title: "Resize PBP buffers",
+      message: "Changing the texture size will clear the current paint state and rebuild the simulation buffers. Continue?",
+      type: "texture-size",
+      targetId: "",
+      payload: { size },
+      confirmLabel: "Resize",
+      confirmTone: "danger",
+    };
+  };
+
+  const executePresetDelete = (type, targetId) => {
+    if (!type || !targetId) return;
+    if (type === "brush") {
+      const next = presetStore.savedBrushPresets.filter((preset) => preset.id !== targetId);
+      if (next.length === presetStore.savedBrushPresets.length) return;
+      presetStore.savedBrushPresets = next;
+      if (ui.selectedBrushPresetId === targetId) {
+        uiStore.selectedBrushPresetId = "";
+      }
+      savePresetsToStorage("brush", next);
+      return;
+    }
+    if (type === "pigment") {
+      const next = presetStore.savedPigmentPresets.filter((preset) => preset.id !== targetId);
+      if (next.length === presetStore.savedPigmentPresets.length) return;
+      presetStore.savedPigmentPresets = next;
+      if (ui.selectedPigmentPresetId === targetId) {
+        uiStore.selectedPigmentPresetId = "";
+      }
+      savePresetsToStorage("pigment", next);
+      return;
+    }
+    if (type === "medium") {
+      const next = presetStore.savedMediumPresets.filter((preset) => preset.id !== targetId);
+      if (next.length === presetStore.savedMediumPresets.length) return;
+      presetStore.savedMediumPresets = next;
+      if (ui.selectedMediumPresetId === targetId) {
+        uiStore.selectedMediumPresetId = "";
+      }
+      savePresetsToStorage("medium", next);
+    }
+  };
+
+  const handleBrushPresetRandomize = () => {
+    const rand = (min, max) => Math.random() * (max - min) + min;
+    setControls({
+      [CONTROL_KEYS.brushSize]: Math.round(rand(8, 64)),
+      [CONTROL_KEYS.brushOpacity]: Number(rand(0.4, 1).toFixed(2)),
+      [CONTROL_KEYS.brushMode]: Math.random() > 0.2 ? BRUSH_MODES.ADD : BRUSH_MODES.ERASE,
+      [CONTROL_KEYS.brushType]: BRUSH_TYPES[Math.floor(rand(0, BRUSH_TYPES.length))],
+    });
+  };
+
+  const handlePigmentPresetRandomize = () => {
+    const rand = (min, max) => Math.random() * (max - min) + min;
+    setControls({
+      [CONTROL_KEYS.pigmentAlpha]: Number(rand(0.4, 0.75).toFixed(2)),
+      [CONTROL_KEYS.pigmentChromaLimit]: Number(rand(0.4, 0.8).toFixed(2)),
+      [CONTROL_KEYS.pigmentNoiseStrength]: Number(rand(0.05, 0.3).toFixed(2)),
+      [CONTROL_KEYS.pigmentGranularity]: Number(rand(0.05, 0.4).toFixed(2)),
+      [CONTROL_KEYS.pigmentValueBias]: Number(rand(0.02, 0.25).toFixed(2)),
+      [CONTROL_KEYS.pigmentEdgePooling]: Number(rand(0.05, 0.3).toFixed(2)),
+      [CONTROL_KEYS.pigmentFlowStrength]: Number(rand(0.2, 1.2).toFixed(2)),
+      [CONTROL_KEYS.pigmentNoiseScale]: Number(rand(0.8, 2.6).toFixed(2)),
+      [CONTROL_KEYS.registration]: Number(rand(0, 0.003).toFixed(4)),
+    });
+    setPigmentProfiles((prev) =>
+      prev.map((profile, index) =>
+        index === controls.selectedPigmentIndex
+          ? {
+              ...profile,
+              opacity: Number(rand(0.5, 1.1).toFixed(2)),
+              chroma: Number(rand(0.5, 1.1).toFixed(2)),
+              valueBias: Number(rand(0.0, 0.2).toFixed(2)),
+            }
+          : profile
+      )
+    );
+  };
+
+  const handleMediumPresetRandomize = () => {
+    const rand = (min, max) => Math.random() * (max - min) + min;
+    setControls({
+      [CONTROL_KEYS.woodAbsorbency]: Number(rand(0.7, 1.4).toFixed(2)),
+      [CONTROL_KEYS.woodFiberStrength]: Number(rand(0.3, 1.0).toFixed(2)),
+      [CONTROL_KEYS.woodCapillary]: Number(rand(0.6, 1.4).toFixed(2)),
+      [CONTROL_KEYS.woodPoolingBias]: Number(rand(0.05, 0.2).toFixed(2)),
+      [CONTROL_KEYS.woodStainRate]: Number(rand(0.01, 0.05).toFixed(3)),
+      [CONTROL_KEYS.woodDryingRate]: Number(rand(0.01, 0.05).toFixed(3)),
+      [CONTROL_KEYS.woodMassRetention]: Number(rand(0.75, 0.95).toFixed(2)),
+      [CONTROL_KEYS.woodGrainInfluence]: Number(rand(0.1, 0.5).toFixed(2)),
+      [CONTROL_KEYS.grainScale]: Number(rand(0.8, 2.0).toFixed(2)),
+      [CONTROL_KEYS.grainNormal]: Number(rand(0.02, 0.14).toFixed(2)),
+      [CONTROL_KEYS.carveContrast]: Number(rand(0.9, 1.4).toFixed(2)),
+    });
+  };
+
   const presetSections = useMemo(
     () => [
       {
@@ -553,171 +740,6 @@ export default function App() {
       mediumPresetOptions,
     ]
   );
-
-  const handlePresetCopy = async (type) => {
-    let payload = null;
-    let label = "";
-    if (type === "brush") {
-      payload = buildBrushPresetPayload();
-      label = ui.presetName || "Brush preset";
-    }
-    if (type === "pigment") {
-      payload = buildPigmentPresetPayload();
-      label = ui.presetName || "Pigment preset";
-    }
-    if (type === "medium") {
-      payload = buildMediumPresetPayload();
-      label = ui.presetName || "Medium preset";
-    }
-    if (!payload) return;
-    const preset = { type, label, data: payload };
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(preset));
-    } catch {}
-  };
-
-  const handlePresetPaste = async (type) => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text) return;
-      const parsed = JSON.parse(text);
-      if (!parsed?.data) return;
-      if (parsed.type && parsed.type !== type) return;
-      const label = parsed.label || "Imported preset";
-      const id = `import-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-      const entry = { id, label, data: parsed.data };
-      if (type === "brush") {
-        const next = [...presetStore.savedBrushPresets, entry];
-        presetStore.savedBrushPresets = next;
-        uiStore.selectedBrushPresetId = id;
-        applyBrushPreset(entry);
-        savePresetsToStorage("brush", next);
-        return;
-      }
-      if (type === "pigment") {
-        const next = [...presetStore.savedPigmentPresets, entry];
-        presetStore.savedPigmentPresets = next;
-        uiStore.selectedPigmentPresetId = id;
-        applyPigmentPreset(entry);
-        savePresetsToStorage("pigment", next);
-        return;
-      }
-      if (type === "medium") {
-        const next = [...presetStore.savedMediumPresets, entry];
-        presetStore.savedMediumPresets = next;
-        uiStore.selectedMediumPresetId = id;
-        applyMediumPreset(entry);
-        savePresetsToStorage("medium", next);
-      }
-    } catch {}
-  };
-
-  const openPresetDeleteConfirm = (type, targetId, label) => {
-    uiStore.confirmModal = {
-      open: true,
-      title: "Delete preset",
-      message: `Delete ${type} preset "${label}"? This cannot be undone.`,
-      type,
-      targetId,
-    };
-  };
-
-  const closeConfirmModal = () => {
-    uiStore.confirmModal = {
-      open: false,
-      title: "",
-      message: "",
-      type: "",
-      targetId: "",
-    };
-  };
-
-  const executePresetDelete = (type, targetId) => {
-    if (!type || !targetId) return;
-    if (type === "brush") {
-      const next = presetStore.savedBrushPresets.filter((preset) => preset.id !== targetId);
-      if (next.length === presetStore.savedBrushPresets.length) return;
-      presetStore.savedBrushPresets = next;
-      if (ui.selectedBrushPresetId === targetId) {
-        uiStore.selectedBrushPresetId = "";
-      }
-      savePresetsToStorage("brush", next);
-      return;
-    }
-    if (type === "pigment") {
-      const next = presetStore.savedPigmentPresets.filter((preset) => preset.id !== targetId);
-      if (next.length === presetStore.savedPigmentPresets.length) return;
-      presetStore.savedPigmentPresets = next;
-      if (ui.selectedPigmentPresetId === targetId) {
-        uiStore.selectedPigmentPresetId = "";
-      }
-      savePresetsToStorage("pigment", next);
-      return;
-    }
-    if (type === "medium") {
-      const next = presetStore.savedMediumPresets.filter((preset) => preset.id !== targetId);
-      if (next.length === presetStore.savedMediumPresets.length) return;
-      presetStore.savedMediumPresets = next;
-      if (ui.selectedMediumPresetId === targetId) {
-        uiStore.selectedMediumPresetId = "";
-      }
-      savePresetsToStorage("medium", next);
-    }
-  };
-
-  const handleBrushPresetRandomize = () => {
-    const rand = (min, max) => Math.random() * (max - min) + min;
-    setControls({
-      [CONTROL_KEYS.brushSize]: Math.round(rand(8, 64)),
-      [CONTROL_KEYS.brushOpacity]: Number(rand(0.4, 1).toFixed(2)),
-      [CONTROL_KEYS.brushMode]: Math.random() > 0.2 ? BRUSH_MODES.ADD : BRUSH_MODES.ERASE,
-      [CONTROL_KEYS.brushType]: BRUSH_TYPES[Math.floor(rand(0, BRUSH_TYPES.length))],
-    });
-  };
-
-  const handlePigmentPresetRandomize = () => {
-    const rand = (min, max) => Math.random() * (max - min) + min;
-    setControls({
-      [CONTROL_KEYS.pigmentAlpha]: Number(rand(0.4, 0.75).toFixed(2)),
-      [CONTROL_KEYS.pigmentChromaLimit]: Number(rand(0.4, 0.8).toFixed(2)),
-      [CONTROL_KEYS.pigmentNoiseStrength]: Number(rand(0.05, 0.3).toFixed(2)),
-      [CONTROL_KEYS.pigmentGranularity]: Number(rand(0.05, 0.4).toFixed(2)),
-      [CONTROL_KEYS.pigmentValueBias]: Number(rand(0.02, 0.25).toFixed(2)),
-      [CONTROL_KEYS.pigmentEdgePooling]: Number(rand(0.05, 0.3).toFixed(2)),
-      [CONTROL_KEYS.pigmentFlowStrength]: Number(rand(0.2, 1.2).toFixed(2)),
-      [CONTROL_KEYS.pigmentNoiseScale]: Number(rand(0.8, 2.6).toFixed(2)),
-      [CONTROL_KEYS.registration]: Number(rand(0, 0.003).toFixed(4)),
-    });
-    setPigmentProfiles((prev) =>
-      prev.map((profile, index) =>
-        index === controls.selectedPigmentIndex
-          ? {
-              ...profile,
-              opacity: Number(rand(0.5, 1.1).toFixed(2)),
-              chroma: Number(rand(0.5, 1.1).toFixed(2)),
-              valueBias: Number(rand(0.0, 0.2).toFixed(2)),
-            }
-          : profile
-      )
-    );
-  };
-
-  const handleMediumPresetRandomize = () => {
-    const rand = (min, max) => Math.random() * (max - min) + min;
-    setControls({
-      [CONTROL_KEYS.woodAbsorbency]: Number(rand(0.7, 1.4).toFixed(2)),
-      [CONTROL_KEYS.woodFiberStrength]: Number(rand(0.3, 1.0).toFixed(2)),
-      [CONTROL_KEYS.woodCapillary]: Number(rand(0.6, 1.4).toFixed(2)),
-      [CONTROL_KEYS.woodPoolingBias]: Number(rand(0.05, 0.2).toFixed(2)),
-      [CONTROL_KEYS.woodStainRate]: Number(rand(0.01, 0.05).toFixed(3)),
-      [CONTROL_KEYS.woodDryingRate]: Number(rand(0.01, 0.05).toFixed(3)),
-      [CONTROL_KEYS.woodMassRetention]: Number(rand(0.75, 0.95).toFixed(2)),
-      [CONTROL_KEYS.woodGrainInfluence]: Number(rand(0.1, 0.5).toFixed(2)),
-      [CONTROL_KEYS.grainScale]: Number(rand(0.8, 2.0).toFixed(2)),
-      [CONTROL_KEYS.grainNormal]: Number(rand(0.02, 0.14).toFixed(2)),
-      [CONTROL_KEYS.carveContrast]: Number(rand(0.9, 1.4).toFixed(2)),
-    });
-  };
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -825,10 +847,7 @@ export default function App() {
     return paletteSets.find((p) => p.label === controls.selectedPaletteLabel)?.colors || DEFAULT_PALETTE_LINEAR;
   }, [controls.selectedPaletteLabel, paletteSets]);
 
-  const debugMap = useMemo(
-    () => DEBUG_LABELS.reduce((acc, label, idx) => ({ ...acc, [label]: idx }), {}),
-    []
-  );
+  const debugMap = useMemo(() => DEBUG_MODES, []);
   const debugOptions = DEBUG_LABELS;
 
   const activeLine = lineImg ?? defaultLineImg;
@@ -863,6 +882,9 @@ export default function App() {
             <button type="button" className="nav-btn" disabled>
               Assets
             </button>
+            <a className="nav-btn" href="/pbp-gpu-test.html">
+              PBP GPU Test
+            </a>
           </div>
         </div>
         <div className="top-tool-bar">
@@ -981,13 +1003,31 @@ export default function App() {
                 <option value={COMPUTE_BACKENDS.CPU}>CPU</option>
               </select>
             </div>
+            <div className="compute-row">
+              <label htmlFor="textureSizeSelect">Texture size</label>
+              <select
+                id="textureSizeSelect"
+                value={controls.pbpTextureSize}
+                onChange={(event) =>
+                  openTextureSizeConfirm(Number(event.target.value))
+                }
+                className="has-tip"
+                data-tooltip="PBP buffer resolution (256–4096)."
+              >
+                <option value={256}>256</option>
+                <option value={512}>512</option>
+                <option value={1024}>1024</option>
+                <option value={2048}>2048</option>
+                <option value={4096}>4096</option>
+              </select>
+            </div>
             <div className="compute-note">
               WebGPU: {ui.webgpuSupported ? "supported" : "not available"}
             </div>
           </CollapsibleSection>
         </div>
       )}
-      <WoodblockScene
+      <WebGPUView
         lineImg={activeLine}
         colorImg={activeColor}
         grainImg={activeGrain}
@@ -1010,12 +1050,11 @@ export default function App() {
           selectedPigmentIndex: controls.selectedPigmentIndex,
         }}
         onPaletteSets={setPaletteSets}
-        />
+      />
         <BottomStrip
           onClearPaint={() => setClearPaintNonce((n) => n + 1)}
         />
       </div>
-      <div ref={brushCursorRef} className="brush-cursor" />
       {ui.showPresetModal && (
         <PresetModal
           presetName={ui.presetName}
@@ -1035,8 +1074,18 @@ export default function App() {
         <ConfirmModal
           title={ui.confirmModal.title}
           message={ui.confirmModal.message}
+          confirmLabel={ui.confirmModal.confirmLabel || "Confirm"}
+          confirmTone={ui.confirmModal.confirmTone || "danger"}
           onCancel={closeConfirmModal}
           onConfirm={() => {
+            if (ui.confirmModal.type === "texture-size") {
+              const nextSize = ui.confirmModal.payload?.size ?? pendingTextureSizeRef.current;
+              if (nextSize) {
+                setControl(CONTROL_KEYS.pbpTextureSize, nextSize);
+              }
+              closeConfirmModal();
+              return;
+            }
             executePresetDelete(ui.confirmModal.type, ui.confirmModal.targetId);
             closeConfirmModal();
           }}

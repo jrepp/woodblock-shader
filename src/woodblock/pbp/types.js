@@ -1,5 +1,6 @@
 export const PBP_DEFAULTS = {
   pigmentId: 0,
+  pigmentMix: 0,
   coverage: 0,
   water: 0,
   mass: 0,
@@ -9,6 +10,7 @@ export const PBP_DEFAULTS = {
 
 export const PBP_BUFFER_LAYOUT = {
   pigmentId: { format: "R8", channels: ["id"], range: [0, 255] },
+  pigmentMix: { format: "RGBA8", channels: ["w0", "w1", "w2", "w3"], range: [0, 255] },
   coverage: { format: "R8", channels: ["coverage"], range: [0, 1] },
   water: { format: "R8", channels: ["water"], range: [0, 1] },
   mass: { format: "R8", channels: ["mass"], range: [0, 1] },

@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:pbp-gpu": "node tests/pbp-gpu-test.mjs",
+    "test:pbp-gpu:compute": "PBP_GPU_COMPUTE=1 PBP_GPU_STEPS=10 PBP_GPU_VIEWS=mass,water,edgePool,coverage,stain,pigmentId PBP_GPU_FIXTURES=basic,carved,checker node tests/pbp-gpu-test.mjs",
+    "test:pbp-gpu:all": "pnpm test:pbp-gpu && pnpm test:pbp-gpu:compute"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",
@@ -18,6 +21,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.2",
+    "@playwright/test": "^1.54.0",
     "vite": "^5.4.11"
   }
 }

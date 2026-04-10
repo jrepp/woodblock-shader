@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PBP GPU Parity Test</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        background: #0f1115;
+        color: #e6e6e6;
+      }
+      header {
+        padding: 12px 16px;
+        border-bottom: 1px solid #2a2f3a;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        gap: 12px;
+        padding: 12px 16px;
+      }
+      #gpu {
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        position: absolute;
+        pointer-events: none;
+      }
+      .hint {
+        color: #9aa4b2;
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .tree {
+        background: #121722;
+        border: 1px solid #232a36;
+        border-radius: 10px;
+        padding: 10px;
+        max-height: calc(100vh - 120px);
+        overflow: auto;
+      }
+      .control-well {
+        border: 1px solid #2a3344;
+        background: #0d131e;
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .control-well .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .tree .fixture {
+        border-bottom: 1px solid #1b2230;
+        padding: 6px 0;
+        position: relative;
+      }
+      .tree .fixture:last-child {
+        border-bottom: none;
+      }
+      .tree .fixture-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding-right: 0;
+        background: #121722;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+      .tree .fixture-title {
+        flex: 1;
+        cursor: pointer;
+        font-weight: 600;
+        color: #d7dee8;
+        background: transparent;
+        border: none;
+        text-align: left;
+        padding: 0;
+        font-size: 13px;
+      }
+      .tree .fixture.open .fixture-title {
+        color: #e7eefb;
+      }
+      .tree .fixture-run {
+        position: static;
+        border: 1px solid #2d3646;
+        background: #0f141f;
+        color: #cfe0ff;
+        border-radius: 6px;
+        padding: 2px 6px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .tree .fixture-run:hover {
+        border-color: #3a4a66;
+        background: #121a2a;
+      }
+      .fixture-list {
+        display: none;
+        margin-top: 6px;
+        position: relative;
+        padding-left: 22px;
+      }
+      .fixture.open .fixture-list {
+        display: block;
+      }
+      .fixture-vert-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        font-size: 10px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: rgba(180, 190, 210, 0.6);
+        pointer-events: none;
+      }
+      .tree button {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: 1px solid transparent;
+        color: #cbd5e1;
+        padding: 4px 6px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .tree .fixture-title {
+        width: 100%;
+        padding: 4px 6px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+      }
+      .tree button:hover {
+        border-color: #2d3646;
+        background: #0f141f;
+      }
+      .tree button.active {
+        border-color: #3a4a66;
+        background: #0b1a33;
+        color: #e7eefb;
+      }
+      .tree button.pass {
+        color: #b6f2c1;
+      }
+      .tree button.fail {
+        color: #f7b3b3;
+      }
+      .preview-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 100px);
+        gap: 10px;
+      }
+      .preview-card {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        align-items: center;
+        position: relative;
+      }
+      .preview-card .label {
+        font-size: 11px;
+        color: #aeb8c7;
+        text-align: center;
+      }
+      .preview-card .tooltip {
+        position: absolute;
+        left: 50%;
+        top: -6px;
+        transform: translate(-50%, -100%);
+        background: #0b121d;
+        border: 1px solid #2a3344;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 12px;
+        color: #e6edf7;
+        width: 220px;
+        text-align: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.12s ease-out;
+        z-index: 2;
+      }
+      .preview-card:hover .tooltip {
+        opacity: 1;
+      }
+      .preview-grid canvas {
+        width: 100px;
+        height: 100px;
+        border: 1px solid #2a2f3a;
+        background: #0f131c;
+        image-rendering: pixelated;
+        display: block;
+      }
+      #diffView {
+        display: none;
+      }
+      #log {
+        white-space: pre-wrap;
+        background: #141924;
+        padding: 12px;
+        border-radius: 8px;
+        min-height: 200px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>PBP GPU Parity Test</strong>
+      <div class="hint">Open console for detailed logs.</div>
+    </header>
+    <main>
+      <aside class="tree" id="fixtureTree" aria-label="Fixture and Test Tree">
+        <div class="control-well" id="fixtureControls">
+          <div class="row">
+            <button id="runCurrentBtn" style="padding:6px 10px;">Run Current</button>
+            <button id="runBtn" style="padding:6px 10px;">Run</button>
+            <button id="runAllBtn" style="padding:6px 10px;">Run All</button>
+            <button id="stepBtn" style="padding:6px 10px;">Step Test</button>
+            <button id="clearCacheBtn" style="padding:6px 10px;">Clear Cache</button>
+          </div>
+          <div class="row">
+            <label style="display:flex; gap:6px; align-items:center; width:100%;">
+              Filter
+              <input id="fixtureFilterInput" type="text" placeholder="Filter fixtures/tests…" style="flex:1; min-width:120px;" />
+            </label>
+          </div>
+          <div class="row">
+            <span id="status" class="hint">idle</span>
+            <span id="cacheStatus" class="hint">cache: empty</span>
+          </div>
+        </div>
+      </aside>
+      <section style="display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <button id="runTopBtn" style="padding:6px 10px;">Run</button>
+          <label style="display:flex; gap:6px; align-items:center;">
+            <input id="computeToggle" type="checkbox" />
+            GPU compute
+          </label>
+          <label style="display:flex; gap:6px; align-items:center;">
+            Ambient moisture
+            <input id="ambientInput" type="number" min="0" max="1" step="0.01" value="0" style="width:72px;" />
+          </label>
+          <label style="display:flex; gap:6px; align-items:center;">
+            Step delay (s)
+            <input id="stepDelayInput" type="number" min="0" max="5" step="0.1" value="0" style="width:72px;" />
+          </label>
+          <label style="display:flex; gap:6px; align-items:center;">
+            Size
+            <input id="sizeInput" type="number" min="16" max="2048" value="64" style="width:72px;" />
+          </label>
+          <label style="display:flex; gap:6px; align-items:center;">
+            Steps
+            <input id="stepsInput" type="number" min="0" max="50" value="10" style="width:72px;" />
+          </label>
+          <label style="display:flex; gap:6px; align-items:center;">
+            Pigment Set
+            <input id="pigmentSet0" type="number" min="0" max="7" value="1" style="width:44px;" />
+            <input id="pigmentSet1" type="number" min="0" max="7" value="2" style="width:44px;" />
+            <input id="pigmentSet2" type="number" min="0" max="7" value="3" style="width:44px;" />
+            <input id="pigmentSet3" type="number" min="0" max="7" value="4" style="width:44px;" />
+          </label>
+        </div>
+        <canvas id="gpu" width="128" height="128"></canvas>
+        <div class="preview-grid" id="previewGrid">
+          <div class="preview-card">
+            <div class="label">Height</div>
+            <canvas data-view="height" width="128" height="128"></canvas>
+            <div class="tooltip">Height input: substrate relief map (higher = raised surface, lower = carved valley).</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Edge</div>
+            <canvas data-view="edge" width="128" height="128"></canvas>
+            <div class="tooltip">Edge input: gradient magnitude from height that drives pooling and capillary bias.</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Grain</div>
+            <canvas data-view="grain" width="128" height="128"></canvas>
+            <div class="tooltip">Grain input: wood fiber direction/strength used to bias capillary spread.</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Coverage</div>
+            <canvas data-view="coverage" width="128" height="128"></canvas>
+            <div class="tooltip">Coverage output: how much surface area is wetted by pigment (0-255).</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Water</div>
+            <canvas data-view="water" width="128" height="128"></canvas>
+            <div class="tooltip">Water output: free water available for transport and drying.</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Mass</div>
+            <canvas data-view="mass" width="128" height="128"></canvas>
+            <div class="tooltip">Mass output: total pigment mass at each cell after advection and retention.</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Edge Pool</div>
+            <canvas data-view="edgePool" width="128" height="128"></canvas>
+            <div class="tooltip">Edge pool output: pigment pooled at edges/valleys due to relief.</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Stain</div>
+            <canvas data-view="stain" width="128" height="128"></canvas>
+            <div class="tooltip">Stain output: absorbed pigment fixed into the substrate.</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Pigment ID</div>
+            <canvas data-view="pigmentId" width="128" height="128"></canvas>
+            <div class="tooltip">Pigment ID output: discrete pigment index per cell.</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Pigment Color</div>
+            <canvas data-view="pigmentColor" width="128" height="128"></canvas>
+            <div class="tooltip">Pigment Color output: palette visualization of pigment IDs.</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Mix Slot 0</div>
+            <canvas data-view="mix0" width="128" height="128"></canvas>
+            <div class="tooltip">Pigment mix slot 0 weight (grayscale).</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Mix Slot 1</div>
+            <canvas data-view="mix1" width="128" height="128"></canvas>
+            <div class="tooltip">Pigment mix slot 1 weight (grayscale).</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Mix Slot 2</div>
+            <canvas data-view="mix2" width="128" height="128"></canvas>
+            <div class="tooltip">Pigment mix slot 2 weight (grayscale).</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Mix Slot 3</div>
+            <canvas data-view="mix3" width="128" height="128"></canvas>
+            <div class="tooltip">Pigment mix slot 3 weight (grayscale).</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Mix Sum</div>
+            <canvas data-view="mixSum" width="128" height="128"></canvas>
+            <div class="tooltip">Sum of mix weights (grayscale, shows normalization/coverage).</div>
+          </div>
+          <div class="preview-card">
+            <div class="label">Final Output</div>
+            <canvas data-view="finalOutput" width="128" height="128"></canvas>
+            <div class="tooltip">Approximate final pigment color using mix weights + mass/stain.</div>
+          </div>
+        </div>
+        <pre id="log">Initializing...\n</pre>
+        <pre id="summary" style="white-space:pre-wrap; background:#0f131c; padding:10px; border-radius:8px;"></pre>
+        <canvas id="diffView" width="128" height="128"></canvas>
+      </section>
+    </main>
+    <script type="module" src="/src/pbp-gpu-test.js"></script>
+  </body>
+</html>

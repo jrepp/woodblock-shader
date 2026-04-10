@@ -1,0 +1,15 @@
+export const PBP_STEP_DEFAULTS = Object.freeze({
+  absorbency: 0.35,
+  capillary: 1.0,
+  poolingBias: 0.1,
+  stainRate: 0.02,
+  stainSeed: 0.5,
+  dryingRate: 0.01,
+  massRetention: 0.92,
+  grainInfluence: 0.3,
+  edgeSoftness: 0.9,
+  ambientMoisture: 0.0,
+  heightInfluence: 0.5,
+  edgeBarrier: 0.35,
+  valleyBias: 0.35,
+});

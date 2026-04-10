@@ -38,6 +38,9 @@ import {
   computeReliefMapsWebGPU,
 } from "./woodblock/js/webgpu.js";
 import { PbpEngine } from "./woodblock/pbp/engine.js";
+import { writePbpTextures } from "./woodblock/pbp/pack.js";
+import { DEFAULT_PIGMENT_SET } from "./woodblock/pbp/settings.js";
+import { summarizeBuffers } from "./woodblock/pbp/debugView.js";
 import { BRUSH_MODES, BRUSH_TYPES } from "./state/constants.js";
 
 const MAP_SIZE = 1024;
@@ -136,12 +139,9 @@ function SceneContent({
     return { paintCanvas: canvas, paintTex: tex };
   }, []);
 
-  const pbpCoverageTex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
-  const pbpWaterTex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
-  const pbpMassTex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
-  const pbpEdgePoolTex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
-  const pbpStainTex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
-  const pbpPigmentIdTex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
+  const pbpATex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
+  const pbpBTex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
+  const pbpCTex = useMemo(() => new THREE.CanvasTexture(document.createElement("canvas")), []);
 
   useEffect(() => {
     const init = (tex) => {
@@ -158,16 +158,13 @@ function SceneContent({
       tex.flipY = false;
       tex.needsUpdate = true;
     };
-    [pbpCoverageTex, pbpWaterTex, pbpMassTex, pbpEdgePoolTex, pbpStainTex, pbpPigmentIdTex].forEach(init);
-  }, [pbpCoverageTex, pbpWaterTex, pbpMassTex, pbpEdgePoolTex, pbpStainTex, pbpPigmentIdTex]);
+    [pbpATex, pbpBTex, pbpCTex].forEach(init);
+  }, [pbpATex, pbpBTex, pbpCTex]);
 
   const pbpEngine = useMemo(() => new PbpEngine({ width: MAP_SIZE, height: MAP_SIZE }), []);
-  const pbpImageDataRef = useRef(null);
-  const pbpWaterDataRef = useRef(null);
-  const pbpMassDataRef = useRef(null);
-  const pbpEdgePoolDataRef = useRef(null);
-  const pbpStainDataRef = useRef(null);
-  const pbpPigmentIdDataRef = useRef(null);
+  const pbpADataRef = useRef(null);
+  const pbpBDataRef = useRef(null);
+  const pbpCDataRef = useRef(null);
   const pbpDirtyRef = useRef(false);
   const pbpLastStepRef = useRef(0);
 
@@ -184,16 +181,14 @@ function SceneContent({
         pigmentNoiseTex,
         pigmentMaskTex,
         paintMaskTex: paintTex,
-        pbpCoverageTex,
-        pbpWaterTex,
-        pbpMassTex,
-        pbpEdgePoolTex,
-        pbpStainTex,
-        pbpPigmentIdTex,
+        pbpATex,
+        pbpBTex,
+        pbpCTex,
         woodColorTex,
         woodFiberTex,
         paletteLinear: DEFAULT_PALETTE_LINEAR,
         pigmentProfiles: pigmentProfiles || DEFAULT_PIGMENT_PROPS,
+        pbpPigmentSet: DEFAULT_PIGMENT_SET,
       }),
     [
       cavityTex,
@@ -206,16 +201,17 @@ function SceneContent({
       pigmentMaskTex,
       pigmentNoiseTex,
       poolingTex,
-      pbpCoverageTex,
-      pbpWaterTex,
-      pbpMassTex,
-      pbpEdgePoolTex,
-      pbpStainTex,
-      pbpPigmentIdTex,
+      pbpATex,
+      pbpBTex,
+      pbpCTex,
       woodFiberTex,
       woodColorTex,
     ]
   );
+
+  useEffect(() => {
+    pbpEngine.setPigmentSet(controls.pbpPigmentSet ?? DEFAULT_PIGMENT_SET);
+  }, [controls.pbpPigmentSet, pbpEngine]);
 
   useEffect(() => {
     materialRef.current = material;
@@ -593,24 +589,6 @@ function SceneContent({
   const paintAt = useCallback(
     (uv, lastUv = null) => {
       if (!uv) return;
-      const direction = lastUv
-        ? { x: uv.x - lastUv.x, y: uv.y - lastUv.y }
-        : { x: 1, y: 0 };
-      pbpEngine.setPigmentId(controls.selectedPigmentIndex ?? 1);
-      pbpEngine.stamp({
-        uv,
-        brushType: controls.brushType,
-        pressure: controls.brushOpacity,
-        heightU8: lastHeightRef.current,
-        lowMin: Number(controls.fillLowMin),
-        lowMax: Number(controls.fillLowMax),
-        reliefBias: Number(controls.woodReliefBias),
-        edgeTex: lastEdgeRef.current,
-        grainTex: grainData,
-        grainSize: 512,
-        direction,
-      });
-      pbpDirtyRef.current = true;
       const ctx = paintCanvas.getContext("2d");
       const size = Math.max(1, controls.brushSize);
       const x = uv.x * paintCanvas.width;
@@ -693,7 +671,6 @@ function SceneContent({
       controls.brushType,
       paintCanvas,
       paintTex,
-      pbpEngine,
     ]
   );
 
@@ -707,28 +684,57 @@ function SceneContent({
       paintRef.current.isPainting = true;
       const uv = event.uv?.clone();
       paintRef.current.lastUv = uv;
+      pbpEngine.setPigmentId(controls.selectedPigmentIndex ?? 1);
+      pbpEngine.beginStroke({
+        uv,
+        brushType: controls.brushType,
+        pressure: controls.brushOpacity,
+        heightU8: lastHeightRef.current,
+        lowMin: Number(controls.fillLowMin),
+        lowMax: Number(controls.fillLowMax),
+        reliefBias: Number(controls.woodReliefBias),
+        edgeTex: lastEdgeRef.current,
+        grainTex: grainData,
+        grainSize: 512,
+      });
+      pbpDirtyRef.current = true;
       paintAt(uv);
     },
-    [brushCursorRef, controls.paintEnabled, paintAt]
+    [brushCursorRef, controls, paintAt, pbpEngine, grainData]
   );
 
   const handlePointerUp = useCallback(() => {
     paintRef.current.isPainting = false;
     paintRef.current.lastUv = null;
+    pbpEngine.endStroke();
     if (brushCursorRef?.current && controls.paintEnabled) {
       brushCursorRef.current.style.opacity = "1";
     }
-  }, [brushCursorRef, controls.paintEnabled]);
+  }, [brushCursorRef, controls.paintEnabled, pbpEngine]);
 
   const handlePointerMove = useCallback(
     (event) => {
       if (!controls.paintEnabled || !paintRef.current.isPainting) return;
       event.stopPropagation();
       const uv = event.uv?.clone();
+      pbpEngine.setPigmentId(controls.selectedPigmentIndex ?? 1);
+      pbpEngine.continueStroke({
+        uv,
+        brushType: controls.brushType,
+        pressure: controls.brushOpacity,
+        heightU8: lastHeightRef.current,
+        lowMin: Number(controls.fillLowMin),
+        lowMax: Number(controls.fillLowMax),
+        reliefBias: Number(controls.woodReliefBias),
+        edgeTex: lastEdgeRef.current,
+        grainTex: grainData,
+        grainSize: 512,
+      });
+      pbpDirtyRef.current = true;
       paintAt(uv, paintRef.current.lastUv);
       paintRef.current.lastUv = uv;
     },
-    [controls.paintEnabled, paintAt]
+    [controls, paintAt, pbpEngine, grainData]
   );
 
   const updateBrushIndicator = useCallback(
@@ -815,58 +821,17 @@ function SceneContent({
     pbpDirtyRef.current = true;
     if (!pbpDirtyRef.current) return;
     const ctx = paintCanvas.getContext("2d");
-    if (!pbpImageDataRef.current) {
-      pbpImageDataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
-      pbpWaterDataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
-      pbpMassDataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
-      pbpEdgePoolDataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
-      pbpStainDataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
-      pbpPigmentIdDataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
+    if (!pbpADataRef.current) {
+      pbpADataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
+      pbpBDataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
+      pbpCDataRef.current = ctx.createImageData(MAP_SIZE, MAP_SIZE);
     }
-    const data = pbpImageDataRef.current.data;
-    const waterData = pbpWaterDataRef.current.data;
-    const massData = pbpMassDataRef.current.data;
-    const edgePoolData = pbpEdgePoolDataRef.current.data;
-    const stainData = pbpStainDataRef.current.data;
-    const pigmentIdData = pbpPigmentIdDataRef.current.data;
-    const { coverage, water, mass, edgePool, stain, pigmentId } = pbpEngine.buffers;
+    const dataA = pbpADataRef.current.data;
+    const dataB = pbpBDataRef.current.data;
+    const dataC = pbpCDataRef.current.data;
+    const buffers = pbpEngine.buffers;
     const region = dirty || { x0: 0, y0: 0, x1: MAP_SIZE - 1, y1: MAP_SIZE - 1 };
-    for (let y = region.y0; y <= region.y1; y += 1) {
-      for (let x = region.x0; x <= region.x1; x += 1) {
-        const i = y * MAP_SIZE + x;
-        const v = coverage[i];
-        const w = water[i];
-        const m = mass[i];
-        const e = edgePool[i];
-        const s = stain[i];
-        const p = pigmentId[i];
-        const o = i * 4;
-        data[o] = v;
-        data[o + 1] = v;
-        data[o + 2] = v;
-        data[o + 3] = 255;
-        waterData[o] = w;
-        waterData[o + 1] = w;
-        waterData[o + 2] = w;
-        waterData[o + 3] = 255;
-        massData[o] = m;
-        massData[o + 1] = m;
-        massData[o + 2] = m;
-        massData[o + 3] = 255;
-        edgePoolData[o] = e;
-        edgePoolData[o + 1] = e;
-        edgePoolData[o + 2] = e;
-        edgePoolData[o + 3] = 255;
-        stainData[o] = s;
-        stainData[o + 1] = s;
-        stainData[o + 2] = s;
-        stainData[o + 3] = 255;
-        pigmentIdData[o] = p;
-        pigmentIdData[o + 1] = p;
-        pigmentIdData[o + 2] = p;
-        pigmentIdData[o + 3] = 255;
-      }
-    }
+    writePbpTextures(buffers, dataA, dataB, dataC, MAP_SIZE, MAP_SIZE, region);
     const uploadStart = typeof performance !== "undefined" ? performance.now() : 0;
     const updateTex = (tex, img) => {
       const texCtx = tex.image.getContext("2d");
@@ -881,13 +846,9 @@ function SceneContent({
       );
       tex.needsUpdate = true;
     };
-    updateTex(paintTex, pbpImageDataRef.current);
-    updateTex(pbpCoverageTex, pbpImageDataRef.current);
-    updateTex(pbpWaterTex, pbpWaterDataRef.current);
-    updateTex(pbpMassTex, pbpMassDataRef.current);
-    updateTex(pbpEdgePoolTex, pbpEdgePoolDataRef.current);
-    updateTex(pbpStainTex, pbpStainDataRef.current);
-    updateTex(pbpPigmentIdTex, pbpPigmentIdDataRef.current);
+    updateTex(pbpATex, pbpADataRef.current);
+    updateTex(pbpBTex, pbpBDataRef.current);
+    updateTex(pbpCTex, pbpCDataRef.current);
     if (uploadStart) {
       const dt = performance.now() - uploadStart;
       pbpEngine.stats.uploadMs = pbpEngine.stats.uploadMs
@@ -901,32 +862,22 @@ function SceneContent({
     if (!onPbpDebugReady) return;
     const api = {
       getBufferSummary() {
-        const { coverage, water, mass, edgePool, stain, pigmentId } = pbpEngine.buffers;
-        const summarize = (buf) => {
-          let min = 255;
-          let max = 0;
-          let sum = 0;
-          for (let i = 0; i < buf.length; i += 1) {
-            const v = buf[i];
-            min = Math.min(min, v);
-            max = Math.max(max, v);
-            sum += v;
-          }
-          return { min, max, avg: sum / buf.length };
-        };
-        return {
-          pigmentId: summarize(pigmentId),
-          coverage: summarize(coverage),
-          water: summarize(water),
-          mass: summarize(mass),
-          edgePool: summarize(edgePool),
-          stain: summarize(stain),
-        };
+        const { coverage, water, mass, edgePool, stain, pigmentId, pigmentMix } = pbpEngine.buffers;
+        return summarizeBuffers({
+          pigmentId,
+          pigmentMix,
+          coverage,
+          water,
+          mass,
+          edgePool,
+          stain,
+        });
       },
       getBuffers() {
-        const { coverage, water, mass, edgePool, stain, pigmentId } = pbpEngine.buffers;
+        const { coverage, water, mass, edgePool, stain, pigmentId, pigmentMix } = pbpEngine.buffers;
         return {
           pigmentId: new Uint8Array(pigmentId),
+          pigmentMix: new Uint8Array(pigmentMix),
           coverage: new Uint8Array(coverage),
           water: new Uint8Array(water),
           mass: new Uint8Array(mass),
@@ -965,6 +916,9 @@ function SceneContent({
       },
       setPigmentId(id) {
         pbpEngine.setPigmentId(id);
+      },
+      setPigmentSet(ids) {
+        pbpEngine.setPigmentSet(ids);
       },
       resetLoad() {
         pbpEngine.resetLoad();

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { DEFAULT_PIGMENT_SET } from "../pbp/settings.js";
 
 export function createMaterial({
   heightTex,
@@ -11,16 +12,14 @@ export function createMaterial({
   pigmentNoiseTex,
   pigmentMaskTex,
   paintMaskTex,
-  pbpCoverageTex,
-  pbpWaterTex,
-  pbpMassTex,
-  pbpEdgePoolTex,
-  pbpStainTex,
-  pbpPigmentIdTex,
+  pbpATex,
+  pbpBTex,
+  pbpCTex = pbpBTex,
   woodColorTex,
   woodFiberTex,
   paletteLinear,
   pigmentProfiles = [],
+  pbpPigmentSet = DEFAULT_PIGMENT_SET,
 }) {
   const pigmentOpacity = new Float32Array(8);
   const pigmentChroma = new Float32Array(8);
@@ -32,6 +31,9 @@ export function createMaterial({
     pigmentValueBias[i] = typeof profile.valueBias === "number" ? profile.valueBias : 0.0;
   }
   return new THREE.ShaderMaterial({
+    extensions: {
+      derivatives: true,
+    },
     uniforms: {
       uHeight: { value: heightTex },
       uNormal: { value: normalTex },
@@ -42,12 +44,9 @@ export function createMaterial({
       uGrain: { value: grainTex },
       uPigmentNoise: { value: pigmentNoiseTex },
       uPigmentMask: { value: pigmentMaskTex },
-      uPbpCoverage: { value: pbpCoverageTex },
-      uPbpWater: { value: pbpWaterTex },
-      uPbpMass: { value: pbpMassTex },
-      uPbpEdgePool: { value: pbpEdgePoolTex },
-      uPbpStain: { value: pbpStainTex },
-      uPbpPigmentId: { value: pbpPigmentIdTex },
+      uPbpA: { value: pbpATex },
+      uPbpB: { value: pbpBTex },
+      uPbpC: { value: pbpCTex },
       uWoodColor: { value: woodColorTex },
       uWoodFiberTex: { value: woodFiberTex },
       uPaintMask: { value: paintMaskTex },
@@ -91,6 +90,7 @@ export function createMaterial({
       uPigmentOpacity: { value: pigmentOpacity },
       uPigmentChroma: { value: pigmentChroma },
       uPigmentValueBiasProfile: { value: pigmentValueBias },
+      uPbpPigmentSet: { value: new THREE.Vector4(...pbpPigmentSet) },
 
       uTime: { value: 0.0 },
       uDebugMode: { value: 0.0 },
@@ -123,12 +123,9 @@ export function createMaterial({
       uniform sampler2D uGrain;
       uniform sampler2D uPigmentNoise;
       uniform sampler2D uPigmentMask;
-      uniform sampler2D uPbpCoverage;
-      uniform sampler2D uPbpWater;
-      uniform sampler2D uPbpMass;
-      uniform sampler2D uPbpEdgePool;
-      uniform sampler2D uPbpStain;
-      uniform sampler2D uPbpPigmentId;
+      uniform sampler2D uPbpA;
+      uniform sampler2D uPbpB;
+      uniform sampler2D uPbpC;
       uniform sampler2D uWoodColor;
       uniform sampler2D uWoodFiberTex;
       uniform sampler2D uPaintMask;
@@ -168,6 +165,7 @@ export function createMaterial({
       uniform float uPigmentOpacity[8];
       uniform float uPigmentChroma[8];
       uniform float uPigmentValueBiasProfile[8];
+      uniform vec4 uPbpPigmentSet;
       uniform float uInkWarmth;
 
       vec3 srgbToLin(vec3 c) {
@@ -263,10 +261,42 @@ export function createMaterial({
         vec2 uvDrift = clamp(uvFlip + uRegistration, 0.001, 0.999);
         vec3 guideDriftSrgb = texture2D(uPigmentMask, uvDrift).rgb;
         float paintMask = texture2D(uPaintMask, uvClamped).r;
-        float pbpCoverage = texture2D(uPbpCoverage, uvClamped).r;
-        float pbpMass = texture2D(uPbpMass, uvClamped).r;
-        float pbpStain = texture2D(uPbpStain, uvClamped).r;
-        float pbpEdgePool = texture2D(uPbpEdgePool, uvClamped).r;
+        vec4 pbpA = texture2D(uPbpA, uvClamped);
+        vec4 pbpB = texture2D(uPbpB, uvClamped);
+        vec4 pbpC = texture2D(uPbpC, uvClamped);
+        float pbpCoverage = pbpA.r;
+        float pbpMass = pbpA.b;
+        float pbpStain = pbpB.r;
+        float pbpEdgePool = pbpA.a;
+        float mixSum = pbpC.x + pbpC.y + pbpC.z + pbpC.w;
+        float mixNorm = max(0.001, mixSum);
+        vec4 mixW = pbpC / mixNorm;
+        int mixId0 = int(clamp(uPbpPigmentSet.x, 0.0, 7.0));
+        int mixId1 = int(clamp(uPbpPigmentSet.y, 0.0, 7.0));
+        int mixId2 = int(clamp(uPbpPigmentSet.z, 0.0, 7.0));
+        int mixId3 = int(clamp(uPbpPigmentSet.w, 0.0, 7.0));
+        vec3 mixPigment =
+          paletteColor(mixId0) * mixW.x +
+          paletteColor(mixId1) * mixW.y +
+          paletteColor(mixId2) * mixW.z +
+          paletteColor(mixId3) * mixW.w;
+        float mixOpacity =
+          pigmentOpacityFor(mixId0) * mixW.x +
+          pigmentOpacityFor(mixId1) * mixW.y +
+          pigmentOpacityFor(mixId2) * mixW.z +
+          pigmentOpacityFor(mixId3) * mixW.w;
+        float mixChromaLimit =
+          pigmentChromaFor(mixId0) * mixW.x +
+          pigmentChromaFor(mixId1) * mixW.y +
+          pigmentChromaFor(mixId2) * mixW.z +
+          pigmentChromaFor(mixId3) * mixW.w;
+        float mixValueBias =
+          pigmentValueBiasFor(mixId0) * mixW.x +
+          pigmentValueBiasFor(mixId1) * mixW.y +
+          pigmentValueBiasFor(mixId2) * mixW.z +
+          pigmentValueBiasFor(mixId3) * mixW.w;
+        vec3 mixPigmentAdj = mix(vec3(luma(mixPigment)), mixPigment, uPigmentChromaLimit * mixChromaLimit);
+        mixPigmentAdj = mixPigmentAdj * (1.0 - (uPigmentValueBias + mixValueBias));
 
         if (uDebugMode > 0.5 && uDebugMode < 1.5) { gl_FragColor = vec4(vec3(h), 1.0); return; }
         if (uDebugMode > 1.5 && uDebugMode < 2.5) { gl_FragColor = vec4(nTex * 0.5 + 0.5, 1.0); return; }
@@ -291,17 +321,22 @@ export function createMaterial({
         float lowInterior = low * (1.0 - edgeMask);
         if (uDebugMode > 6.5 && uDebugMode < 7.5) { gl_FragColor = vec4(vec3(lowInterior), 1.0); return; }
         if (uDebugMode > 7.5 && uDebugMode < 8.5) { gl_FragColor = vec4(vec3(edgeMask), 1.0); return; }
-        float pbpWater = texture2D(uPbpWater, uvClamped).r;
-        float pbpPigmentId = texture2D(uPbpPigmentId, uvClamped).r;
+        float pbpWater = pbpA.g;
+        float pbpPigmentId = pbpB.g;
         if (uDebugMode > 8.5 && uDebugMode < 9.5) { gl_FragColor = vec4(vec3(pbpCoverage), 1.0); return; }
         if (uDebugMode > 9.5 && uDebugMode < 10.5) { gl_FragColor = vec4(vec3(pbpWater), 1.0); return; }
         if (uDebugMode > 10.5 && uDebugMode < 11.5) { gl_FragColor = vec4(vec3(pbpMass), 1.0); return; }
         if (uDebugMode > 11.5 && uDebugMode < 12.5) { gl_FragColor = vec4(vec3(pbpEdgePool), 1.0); return; }
         if (uDebugMode > 12.5 && uDebugMode < 13.5) { gl_FragColor = vec4(vec3(pbpStain), 1.0); return; }
         if (uDebugMode > 13.5 && uDebugMode < 14.5) { gl_FragColor = vec4(vec3(pbpPigmentId), 1.0); return; }
-        if (uDebugMode > 14.5 && uDebugMode < 15.5) { gl_FragColor = vec4(vec3(cavityTex), 1.0); return; }
-        if (uDebugMode > 15.5 && uDebugMode < 16.5) { gl_FragColor = vec4(vec3(poolingTex), 1.0); return; }
-        if (uDebugMode > 16.5 && uDebugMode < 17.5) { gl_FragColor = vec4(vec3(flow * 0.5 + 0.5, 0.5), 1.0); return; }
+        if (uDebugMode > 14.5 && uDebugMode < 15.5) { gl_FragColor = vec4(vec3(pbpC.x), 1.0); return; }
+        if (uDebugMode > 15.5 && uDebugMode < 16.5) { gl_FragColor = vec4(vec3(pbpC.y), 1.0); return; }
+        if (uDebugMode > 16.5 && uDebugMode < 17.5) { gl_FragColor = vec4(vec3(pbpC.z), 1.0); return; }
+        if (uDebugMode > 17.5 && uDebugMode < 18.5) { gl_FragColor = vec4(vec3(pbpC.w), 1.0); return; }
+        if (uDebugMode > 18.5 && uDebugMode < 19.5) { gl_FragColor = vec4(vec3(mixPigmentAdj), 1.0); return; }
+        if (uDebugMode > 19.5 && uDebugMode < 20.5) { gl_FragColor = vec4(vec3(cavityTex), 1.0); return; }
+        if (uDebugMode > 20.5 && uDebugMode < 21.5) { gl_FragColor = vec4(vec3(poolingTex), 1.0); return; }
+        if (uDebugMode > 21.5 && uDebugMode < 22.5) { gl_FragColor = vec4(vec3(flow * 0.5 + 0.5, 0.5), 1.0); return; }
 
         float grainAmt = mix(0.07, 0.16, 1.0 - inkMask);
         vec3 col = uWoodTint + (grain - 0.5) * grainAmt;
@@ -318,7 +353,7 @@ export function createMaterial({
         vec3 guidePigment = paletteColor(pi);
         float guideChromaLimit = uPigmentChromaLimit * pigmentChromaFor(pi);
         float guideValueBias = uPigmentValueBias + pigmentValueBiasFor(pi);
-        float pigL = luma(pigment);
+        float pigL = luma(guidePigment);
         guidePigment = mix(vec3(pigL), guidePigment, guideChromaLimit);
         guidePigment = guidePigment * (1.0 - guideValueBias);
 
@@ -333,26 +368,24 @@ export function createMaterial({
         float pool = max(poolingTex, poolEdge) * uPigmentEdgePooling;
         pool = max(pool, pbpEdgePool * 0.6);
 
+        float pbpIdFloat = pbpPigmentId * 255.0;
+        int pbpId = int(floor(pbpIdFloat + 0.5));
+        pbpId = clamp(pbpId, 0, 7);
+        float pbpHasId = step(0.5, pbpIdFloat);
+        float pbpHasMix = step(0.01, mixSum);
+
         float gran = mix(1.0 - uPigmentGranularity, 1.0 + uPigmentGranularity, pigmentNoise);
         float guideAlpha = uPigmentAlpha * pigmentOpacityFor(pi);
-        float pbpAlpha = uPigmentAlpha * pigmentOpacityFor(pbpId);
-        float pigmentAlpha = mix(guideAlpha, pbpAlpha, pbpMix * pbpHasId);
+        float pbpAlpha = uPigmentAlpha * mix(mixOpacity, pigmentOpacityFor(pbpId), 1.0 - pbpHasMix);
+        float pigmentAlpha = mix(guideAlpha, pbpAlpha, pbpMix * max(pbpHasId, pbpHasMix));
         cov = clamp(cov * gran * pigmentAlpha, 0.0, 1.0);
         cov = mix(cov, cov * paintMask, uPaintMix);
         if (uDebugMode > 5.5 && uDebugMode < 6.5) { gl_FragColor = vec4(vec3(cov), 1.0); return; }
 
         float absorption = exp(-cov * uWoodAbsorbency);
         float stainBoost = mix(1.0, 1.2, pbpStain);
-        float pbpIdFloat = pbpPigmentId * 255.0;
-        int pbpId = int(floor(pbpIdFloat + 0.5));
-        pbpId = clamp(pbpId, 0, 7);
-        float pbpHasId = step(0.5, pbpIdFloat);
-        vec3 pbpPigment = paletteColor(pbpId);
-        float pbpChromaLimit = uPigmentChromaLimit * pigmentChromaFor(pbpId);
-        float pbpValueBias = uPigmentValueBias + pigmentValueBiasFor(pbpId);
-        pbpPigment = mix(vec3(luma(pbpPigment)), pbpPigment, pbpChromaLimit);
-        pbpPigment = pbpPigment * (1.0 - pbpValueBias);
-        vec3 pigment = mix(guidePigment, pbpPigment, pbpMix * pbpHasId);
+        vec3 pbpPigment = mix(mixPigmentAdj, paletteColor(pbpId), 1.0 - pbpHasMix);
+        vec3 pigment = mix(guidePigment, pbpPigment, pbpMix * max(pbpHasId, pbpHasMix));
         col = mix(pigmentBlend(col, pigment * stainBoost, 1.0 - absorption), col, 0.08);
         col *= (1.0 - pool * 0.08);
         col *= (1.0 - cavity * 0.06);

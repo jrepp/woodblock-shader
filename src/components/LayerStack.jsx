@@ -1,28 +1,11 @@
 import { useControls } from "../state/useControls.js";
 import { CONTROL_KEYS } from "../state/controls.js";
+import { DEBUG_LABELS } from "../state/constants.js";
 
 export default function LayerStack({ onSelectDebugLayer }) {
   const { controls, setControl } = useControls();
   const debugMode = controls.debugMode;
-  const debugLayers = [
-    "Height",
-    "Normal",
-    "Pigment mask",
-    "Wood grain",
-    "Pigment noise",
-    "Pigment fill",
-    "Pigment low",
-    "Pigment edge",
-    "PBP coverage",
-    "PBP water",
-    "PBP mass",
-    "PBP edge pool",
-    "PBP stain",
-    "PBP pigment id",
-    "Cavity",
-    "Pooling",
-    "Flow",
-  ];
+  const debugLayers = DEBUG_LABELS.slice(1);
   return (
     <div className="layer-stack">
       <div className="section-title">Layers</div>

@@ -1,6 +1,13 @@
 import ModalShell from "./ModalShell.jsx";
 
-export default function ConfirmModal({ title, message, onConfirm, onCancel }) {
+export default function ConfirmModal({
+  title,
+  message,
+  confirmLabel = "Delete",
+  confirmTone = "danger",
+  onConfirm,
+  onCancel,
+}) {
   return (
     <ModalShell
       onConfirm={onConfirm}
@@ -22,11 +29,11 @@ export default function ConfirmModal({ title, message, onConfirm, onCancel }) {
         </button>
         <button
           type="button"
-          className="preset-btn danger"
+          className={`preset-btn ${confirmTone}`}
           onClick={onConfirm}
           data-primary="true"
         >
-          Delete
+          {confirmLabel}
         </button>
       </div>
     </ModalShell>

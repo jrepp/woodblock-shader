@@ -1,0 +1,21 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2a1c"/>
+      <stop offset="1" stop-color="#25180f"/>
+    </linearGradient>
+    <linearGradient id="grain" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6b4a2f" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#3b2415" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="40" fill="url(#bg)"/>
+  <g opacity="0.45">
+    <path d="M20 30c40 40 70 140 140 200" stroke="url(#grain)" stroke-width="10" fill="none"/>
+    <path d="M70 10c30 60 80 140 160 210" stroke="url(#grain)" stroke-width="8" fill="none"/>
+    <path d="M0 90c50 40 90 110 200 170" stroke="url(#grain)" stroke-width="6" fill="none"/>
+  </g>
+  <ellipse cx="128" cy="150" rx="78" ry="60" fill="#b06a3d" opacity="0.92"/>
+  <ellipse cx="128" cy="150" rx="78" ry="60" fill="none" stroke="#1a110a" stroke-width="8" opacity="0.85"/>
+  <ellipse cx="128" cy="150" rx="46" ry="36" fill="#d9a074" opacity="0.88"/>
+</svg>
