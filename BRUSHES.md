@@ -49,6 +49,34 @@ Each stroke step produces (or updates):
 
 ---
 
+## 1.4 Brush input pipeline (interactive authoring) — **in progress**
+
+We are standardizing **brush input handling** so GPU/CPU parity stays stable and stroke feel is consistent.
+
+**Input capture**
+- Pointer stream yields `(x, y, t, pressure)` samples.
+- Normalize pressure to `[0..1]` and apply a curve (e.g., `p = p^1.3`) for better control.
+
+**Stroke sampling**
+- Convert input to stamps with a **distance-based spacing**:
+  - `spacing = radius * 0.35` (default).
+  - Clamp to avoid gaps at high speed (max spacing = `radius * 0.6`).
+- Interpolate position/pressure between samples to generate evenly spaced stamps.
+
+**Dynamic parameters per stamp**
+- `pressure` → scales `base_deposit` and `radius`.
+- `direction` → derived from velocity; required for smudge and streak bias.
+- `load` → decays over stroke distance; reset on new stroke.
+
+**Determinism**
+- Each stroke gets a seed for jitter; the seed is stable for replay/testing.
+
+**Output target (weighted mix)**
+- Stamps deposit into `pbpPigmentMix` weights + `mass`/`coverage`.
+- Multi‑pigment brushes distribute weight across active pigments.
+
+---
+
 ## 2. Tool set overview
 
 This set models the most common hand-coloring implements and their signatures.

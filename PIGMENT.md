@@ -93,6 +93,45 @@ Target minimal buffer pack (CPU first, GPU later). All textures are **wood‑spa
 | `pbpEdgePool` | R8 | `pool` | Edge accumulation (0..1) |
 | `pbpStain` | R8 | `stain` | Absorbed fraction (0..1) |
 
+---
+
+## 2.2.1a PBP buffer layout (4‑pigment weighted mix) — **in progress**
+
+We are moving to a **weighted mix model** so a single cell can contain multiple pigments.
+This preserves palette identity while enabling real mixing and layered strokes.
+
+**Core changes**
+- Replace single `pbpPigmentId` with **RGBA weights** (4 pigments per cell).
+- Keep a small **active pigment set** (4 entries) that map weights → palette IDs.
+- `mass/coverage/stain/edge_pool/water` remain unchanged.
+
+**Buffers**
+
+| Buffer | Format | Channels | Meaning |
+|---|---|---|---|
+| `pbpPigmentMix` | RGBA8 | `w0,w1,w2,w3` | Per‑cell weights for 4 active pigments (0..255) |
+| `pbpPigmentSet` | Uniform | `id0,id1,id2,id3` | Active pigment IDs (palette indices) |
+| `pbpCoverage` | R8 | `coverage` | Pigment thickness proxy (0..1) |
+| `pbpWater` | R8 | `water` | Wetness field (0..1) |
+| `pbpMass` | R8 | `mass` | Particulate density (0..1) |
+| `pbpEdgePool` | R8 | `pool` | Edge accumulation (0..1) |
+| `pbpStain` | R8 | `stain` | Absorbed fraction (0..1) |
+
+**Mixing rules (draft)**
+- Stamp deposits **weighted color** into `pbpPigmentMix` in proportion to brush load and pigment concentration.
+- When multiple pigments overlap, weights **accumulate and renormalize** to preserve total mass/coverage.
+- `pbpMass` is the scalar magnitude; `pbpPigmentMix` is the distribution.
+- `pbpStain` stores absorbed mass; **stain inherits mix weights** (same ratio as surface).
+
+**Shader read**
+- Convert active pigment IDs → palette colors.
+- Blend colors by normalized weights, then modulate by `coverage`/`mass`.
+- Edge pooling uses `edge_pool` to darken and bias toward heavier pigments.
+
+**Progress note**
+- Docs updated to weighted mix spec.
+- Next step is to add `pbpPigmentMix` to CPU/GPU buffers and update stamp/step kernels.
+
 **Optional pack (later)**  
 `pbpFlow` (RG8) stores flow direction or smear vector; `pbpVelocity` (RG8) for brush‑driven redistribution.
 
